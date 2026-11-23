@@ -1,0 +1,28 @@
+__pycache__/
+.ruff_cache/
+*.py[cod]
+.venv/
+data/
+dev-data/
+*.db
+*.db-wal
+*.db-shm
+config.json
+
+# Local configuration, account state, and exports.
+.env
+.env.*
+signal/
+backups/
+*.sqlite*
+*.opml
+/HANDOFF.md
+
+# Local editor state, release artifacts, and coding-agent configuration.
+.obsidian/
+/dist/
+/signal-news-bot-*.tar.gz
+/signal-news-bot-*.tar.gz.sha256
+/.relay-media-*/
+/.opencode/*
+!/.opencode/skills/

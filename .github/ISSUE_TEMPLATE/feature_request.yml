@@ -1,0 +1,11 @@
+name: Feature request
+description: Suggest an improvement
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What should the bot do differently?
+      description: Describe the use case with public or synthetic examples only.
+    validations:
+      required: true

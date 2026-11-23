@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible Signal News Bot problem
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This form is public. Use examples or redact identifying details.
+        Never include keys, Signal identifiers, private feed URLs, or real
+        group messages. Report vulnerabilities privately.
+  - type: input
+    id: version
+    attributes:
+      label: Version and environment
+      placeholder: "Relay 1.0.7, Debian 12, Python 3.11"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Explain what happened and what you expected, using synthetic inputs.
+    validations:
+      required: true

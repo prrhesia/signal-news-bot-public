@@ -1,0 +1,2 @@
+{% extends 'base.html' %}{% block content %}<h1>👥 Signal groups</h1><p>Copy the base64 group ID into <a href="/?page=settings">settings</a>. Only the configured group can control the bot.</p>
+{% for group in groups %}<section><h2>{{ group.name }}</h2><pre>{{ group.id }}</pre><p>Member: {{ group.isMember }} · Pending: {{ group.get('isPending','not reported') }}</p></section>{% else %}<p class="empty">No groups reported by Signal.</p>{% endfor %}{% endblock %}

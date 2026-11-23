@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+RELEASE=$(dirname -- "$SCRIPT_DIR")
+# Root-owned release metadata, never group-message input.
+# shellcheck source=/dev/null
+source "$RELEASE/runtime.env"
+if [[ $SIGNAL_RUNTIME == native ]]; then
+  exec "$SIGNAL_BIN" -Xmx192m "$@"
+fi
+export JAVA_HOME=/opt/signal-news-bot/vendor/java
+export JAVA_OPTS='-Xms32m -Xmx256m'
+exec "$SIGNAL_BIN" "$@"

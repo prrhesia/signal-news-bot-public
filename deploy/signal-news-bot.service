@@ -1,0 +1,26 @@
+[Unit]
+Description=RSS AI news editor and Signal bot dashboard
+After=network-online.target signal-news-signal.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=newsbot
+Group=newsbot
+WorkingDirectory=/opt/signal-news-bot/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/signal-news-bot/current/.venv/bin/python -m newsbot --data /var/lib/signal-news-bot serve
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/signal-news-bot
+MemoryMax=256M
+MemoryHigh=192M
+
+[Install]
+WantedBy=multi-user.target

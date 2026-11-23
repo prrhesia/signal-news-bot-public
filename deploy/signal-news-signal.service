@@ -1,0 +1,25 @@
+[Unit]
+Description=Signal CLI for RSS news bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=newsbot
+Group=newsbot
+WorkingDirectory=/var/lib/signal-news-bot
+ExecStart=/opt/signal-news-bot/current/scripts/signal-cli-run --data-dir /var/lib/signal-news-bot/signal --scrub-log daemon --http=127.0.0.1:7583 --receive-mode=on-connection --ignore-attachments --ignore-stories --ignore-avatars --ignore-stickers
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/signal-news-bot
+MemoryMax=512M
+MemoryHigh=384M
+
+[Install]
+WantedBy=multi-user.target

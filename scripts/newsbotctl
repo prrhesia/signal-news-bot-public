@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=scripts/admin-lib.sh
+source "$SCRIPT_DIR/admin-lib.sh"
+if [[ $EUID -ne 0 ]]; then echo 'Use sudo newsbotctl ...' >&2; exit 1; fi
+command=${1:-help}
+if [[ $# -gt 0 ]]; then shift; fi
+python_app() {
+  runuser -u newsbot -- env PYTHONPATH="$ROOT/current" PYTHONDONTWRITEBYTECODE=1 \
+    "$ROOT/current/.venv/bin/python" -m newsbot --data "$DATA" "$@"
+}
+lock_admin() {
+  exec 9>/run/lock/signal-news-bot.lock
+  flock -n 9 || { echo 'Another newsbot administration operation is running.' >&2; exit 1; }
+}
+case "$command" in
+  link|signal)
+    lock_admin
+    stop_services
+    trap start_services EXIT
+    if [[ $command == link ]]; then set -- link -n 'RSS News Bot'; fi
+    runuser -u newsbot -- "$ROOT/current/scripts/signal-cli-run" --data-dir "$DATA/signal" "$@"
+    ;;
+  password) python_app init ;;
+  doctor) python_app doctor ;;
+  test-ai)
+    if [[ $# -ne 1 ]]; then echo 'Usage: newsbotctl test-ai MODEL_ALIAS' >&2; exit 1; fi
+    python_app test-ai "$1"
+    ;;
+  compact)
+    lock_admin
+    RUNNING=()
+    for unit in "${UNITS[@]}"; do
+      if systemctl is-active --quiet "$unit"; then RUNNING+=("$unit"); fi
+    done
+    stop_services
+    trap 'if [[ ${#RUNNING[@]} -gt 0 ]]; then systemctl start "${RUNNING[@]}"; fi' EXIT
+    snapshot_data before-compact
+    python_app compact
+    ;;
+  prune-backups)
+    lock_admin
+    if [[ $# -eq 0 ]]; then
+      python3 "$ROOT/current/scripts/prune-backups.py"
+    elif [[ $# -eq 1 && $1 == --confirm ]]; then
+      python3 "$ROOT/current/scripts/prune-backups.py" --apply
+    else
+      echo 'Usage: newsbotctl prune-backups [--confirm]' >&2; exit 1
+    fi
+    ;;
+  import)
+    if [[ $# -ne 1 ]]; then echo 'Usage: newsbotctl import /absolute/path/feeds.opml' >&2; exit 1; fi
+    lock_admin
+    # Stream the chosen file to the service user; never run the app/import as root.
+    runuser -u newsbot -- env PYTHONPATH="$ROOT/current" PYTHONDONTWRITEBYTECODE=1 \
+      "$ROOT/current/.venv/bin/python" -m newsbot --data "$DATA" import /dev/stdin < "$1"
+    ;;
+  update)
+    if [[ $# -ne 1 || ! -f $1/install.sh || ! -f $1/VERSION ]]; then
+      echo 'Usage: newsbotctl update /absolute/path/to/new/extracted/signal-news-bot' >&2; exit 1
+    fi
+    exec bash "$1/install.sh"
+    ;;
+  backup)
+    lock_admin
+    RUNNING=()
+    for unit in "${UNITS[@]}"; do
+      if systemctl is-active --quiet "$unit"; then RUNNING+=("$unit"); fi
+    done
+    stop_services
+    trap 'if [[ ${#RUNNING[@]} -gt 0 ]]; then systemctl start "${RUNNING[@]}"; fi' EXIT
+    snapshot_data manual
+    echo "Backup: $SNAPSHOT (contains credentials and Signal keys; keep private)."
+    python3 "$ROOT/current/scripts/prune-backups.py" --apply
+    ;;
+  backups)
+    if [[ -d $BACKUPS ]]; then find "$BACKUPS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort; fi
+    ;;
+  rollback)
+    if [[ $# -ne 2 || $2 != --confirm || $1 == */* ]]; then
+      echo 'Usage: newsbotctl rollback BACKUP_ID --confirm' >&2
+      echo 'Restores CODE AND DATA to that snapshot. Later settings/history will be moved aside, not merged.' >&2
+      exit 1
+    fi
+    lock_admin
+    TARGET="$BACKUPS/$1"
+    [[ -f $TARGET/complete ]] || { echo 'Completed backup not found.' >&2; exit 1; }
+    stop_services
+    trap start_services EXIT
+    snapshot_data before-rollback
+    restore_snapshot "$TARGET"
+    start_services
+    ready_check
+    echo "Restored $1. Pre-rollback state preserved in $SNAPSHOT. Check the group before resuming news."
+    ;;
+  start|stop|restart)
+    lock_admin
+    systemctl "$command" "${UNITS[@]}"
+    ;;
+  status) systemctl --no-pager status "${UNITS[@]}" ;;
+  logs) journalctl --no-pager -u signal-news-bot.service -u signal-news-signal.service -n 100 "$@" ;;
+  *) echo 'Usage: newsbotctl {link|signal ARGS|password|doctor|test-ai ALIAS|import FILE|update DIR|backup|backups|prune-backups [--confirm]|compact|rollback ID --confirm|start|stop|restart|status|logs}' ;;
+esac

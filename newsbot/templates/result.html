@@ -1,0 +1,2 @@
+{% extends 'base.html' %}{% block content %}<h1>Action result</h1><section><pre>{{ result }}</pre>
+{% if confirm %}<form method="post" action="/command"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger" name="command" value="{{ confirm }}">Confirm {{ 'local article cleanup' if confirm == '/cleanup confirm' else 'feed removal' }}</button></form>{% endif %}</section><a href="/?page={{ page }}">Back to {{ page }}</a>{% endblock %}
