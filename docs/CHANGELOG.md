@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.8 — Cadence
+
+- Keep the Signal timestamp and editable caption when the daemon reports a
+  successful recipient alongside a failure. Reactions and story mutes can target
+  those posts. Delivery remains uncertain and is never automatically retried.
+  Schedule routine reply cleanup in the same partial-success case.
+- Recognize closely spaced rewrites of the same US verdict or unclassified
+  intelligence breach, including before instant forwarding and during mute checks.
+- Read videos and gallery images from rich feed content alongside short teasers,
+  and recognize linked Nitter full-size photos and same-status video thumbnails.
+- Reuse a bounded cache of immutable editorial tokens and skip the HTML parser
+  for plain-text feed titles. No changes to the database schema or provider defaults.
+
 ## 1.0.7 — Relay
 
 - Add opt-in MP4 attachments from public feed entries and supported Nitter

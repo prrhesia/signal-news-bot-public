@@ -188,6 +188,8 @@ class Group104(Base, unittest.IsolatedAsyncioTestCase):
 
         async def rpc(method, params):
             calls.append((method, params))
+            if len(calls) == 1:
+                return {"timestamp": now - 1, "results": [{"type": "SUCCESS"}, {"type": "NETWORK_FAILURE"}]}
             if method == "send" and len(calls) == 3:
                 replies_sent.set()
             return {"timestamp": now - len(calls), "results": [{"type": "SUCCESS"}]}

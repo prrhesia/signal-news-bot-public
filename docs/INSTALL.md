@@ -29,16 +29,16 @@ Releases, not the automatic **Source code** archive. **On your computer**, run
 this from the download folder and replace the destination with your VPS address:
 
 ```bash
-scp signal-news-bot-1.0.7.tar.gz signal-news-bot-1.0.7.tar.gz.sha256 root@YOUR_VPS_IP:~/
+scp signal-news-bot-1.0.8.tar.gz signal-news-bot-1.0.8.tar.gz.sha256 root@YOUR_VPS_IP:~/
 ```
 
 **On the VPS, as root:**
 
 ```bash
-sha256sum -c signal-news-bot-1.0.7.tar.gz.sha256 &&
-  mkdir newsbot-install-1.0.7 &&
-  tar -xzf signal-news-bot-1.0.7.tar.gz -C newsbot-install-1.0.7 &&
-  cd newsbot-install-1.0.7/signal-news-bot &&
+sha256sum -c signal-news-bot-1.0.8.tar.gz.sha256 &&
+  mkdir newsbot-install-1.0.8 &&
+  tar -xzf signal-news-bot-1.0.8.tar.gz -C newsbot-install-1.0.8 &&
+  cd newsbot-install-1.0.8/signal-news-bot &&
   bash install.sh
 ```
 

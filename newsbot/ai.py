@@ -23,11 +23,10 @@ For each accepted story, name the applicable focus and the supported concrete ch
 in reason. If either is unclear from this feed title/description, don't post.
 Compare each article to recent_posts, its related_posts, and the other input articles.
 Match actor + action + object/incident, not just shared words or general topic. A
-different outlet, "named" vs "appointed" to the same role, predecessor's name, or
-restated quantity (900k vs 900,000) doesn't make an event new. In a batch of rewrites
-choose at most one, preferring the best supported account. A roundup or reaction that
-repeats the same facts is not a follow-up. A new outlet, dateline, headline angle,
-or restatement of already known numbers is not a new development. Admit a related story only
+different outlet, angle, wording, or equivalent quantity doesn't make an event new.
+Different details of one outcome can all be true without being successive developments.
+Choose at most one account per outcome. Ask what happened since the earlier dispatch,
+regardless of topic. Admit a related story only
 if you can state a concrete new fact: changed impact, a separate decision/order, a
 confirmation, denial, correction, or recovery. A possible consequence paraphrased
 as a concern is not a new fact. Lead with the supported change, not the backstory.

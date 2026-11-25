@@ -36,7 +36,7 @@ subscriptions, history, keys, and account state.
 - **Group controls:** `/status`, `/usage`, `/mode preview`, `/pause`, and
   `/help`. `/dmtest` sends a fixed, private test reply only to its requester.
 
-See the [1.0.7 Relay notes](docs/CHANGELOG.md#107--relay) for what changed.
+See the [1.0.8 Cadence notes](docs/CHANGELOG.md#108--cadence) for what changed.
 
 ## Privacy and limits
 

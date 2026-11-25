@@ -24,6 +24,8 @@ def muted_story(engine, item, summary):
         return None
     rows = engine.store.rows("SELECT id,title,summary FROM story_mutes WHERE group_id=? AND selector=? AND expires>?",
                              (*engine.scope, time.time()))
+    if not rows:
+        return None
     title = terms(item["title"])
     for row in rows:
         old_title = terms(row["title"])

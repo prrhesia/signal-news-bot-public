@@ -148,9 +148,9 @@ def local_recap(posts):
 def post_target(engine, timestamp):
     if type(timestamp) is not int or not 0 < timestamp < 2**63:
         return None
-    rows = engine.store.rows("""SELECT * FROM items WHERE signal_timestamp=? AND status='sent'
+    rows = engine.store.rows("""SELECT * FROM items WHERE signal_timestamp=? AND status IN ('sent','uncertain')
           UNION ALL SELECT items.* FROM edit_targets JOIN items ON items.id=edit_targets.item_id
-          WHERE edit_targets.timestamp=? AND status='sent' LIMIT 8""", (str(timestamp), str(timestamp)))
+          WHERE edit_targets.timestamp=? AND status IN ('sent','uncertain') LIMIT 8""", (str(timestamp), str(timestamp)))
     return next((row for row in rows if in_group(row, engine.config.data)), None)
 
 
@@ -172,7 +172,7 @@ def feed_details(row):
         if len(sentence) > 320 or not extra or len(extra) == 1 and len(terms(sentence)) > 5:
             continue
         added.append(sentence.strip())
-        known.update(extra)
+        known |= extra
         if len(added) == 3:
             break
     return added
@@ -223,7 +223,7 @@ async def send_expansion(engine, row, scope):
 
 
 async def process_expansion(engine, item_id, scope, author):
-    row = engine.store.one("SELECT * FROM items WHERE id=? AND status='sent' AND expanded=1", (item_id,))
+    row = engine.store.one("SELECT * FROM items WHERE id=? AND status IN ('sent','uncertain') AND expanded=1", (item_id,))
     c = engine.config.data
     key = c["tavily_key"]
 
@@ -396,7 +396,7 @@ def topic_preferences(store, config, now):
     if not config["topic_feedback"]:
         return []
     rows = store.rows(f"""SELECT i.title,i.summary,i.rules,i.sent_at,SUM(v.vote) AS net
-          FROM items i JOIN topic_votes v ON v.item_id=i.id WHERE i.status='sent' AND i.sent_at>?
+          FROM items i JOIN topic_votes v ON v.item_id=i.id WHERE i.status IN ('sent','uncertain') AND i.sent_at>?
           AND {visible_post("i.id")}
           GROUP BY i.id HAVING net!=0 ORDER BY i.sent_at DESC LIMIT 150""", (now - LOOKBACK,))
     return [(terms(row["title"] + " " + row["summary"]), row["net"], 1 - (now - row["sent_at"]) / LOOKBACK)
@@ -428,7 +428,7 @@ async def edit_due_footer(engine):
         return
     item_id = row["id"]
     store.execute("UPDATE footer_edits SET due=0 WHERE item_id=?", (item_id,))
-    if (not in_group(row, c) or row["status"] != "sent" or not 0 <= now - row["sent_at"] < DELETE_WINDOW
+    if (not in_group(row, c) or row["status"] not in {"sent", "uncertain"} or not 0 <= now - row["sent_at"] < DELETE_WINDOW
             or row["sent_account"] not in {"", getattr(engine.signal, "current_account", "")}):
         return
     saved = metadata(row, "rendered")

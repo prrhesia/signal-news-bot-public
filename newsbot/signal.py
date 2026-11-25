@@ -12,9 +12,10 @@ from .moderation import KEEP_REPLIES, REPLY_TTL, arm_reply, valid_target
 
 
 class SignalError(Exception):
-    def __init__(self, message, signal_timestamp=None):
+    def __init__(self, message, signal_timestamp=None, delivered_some=False):
         super().__init__(message)
         self.signal_timestamp = signal_timestamp
+        self.delivered_some = delivered_some
 
 
 def confirmed_result(result, deletion=False):
@@ -24,7 +25,9 @@ def confirmed_result(result, deletion=False):
     if (result.get("errors") or not isinstance(recipients, list) or (deletion and not recipients)
             or any(not isinstance(r, dict) or r.get("type") not in ({"SUCCESS"} if deletion else {None, "SUCCESS"})
                    for r in recipients)):
-        raise SignalError("Possible partial delivery; inspect group before retrying", result["timestamp"])
+        partial = isinstance(recipients, list) and any(isinstance(r, dict) and r.get("type") == "SUCCESS"
+                                                       for r in recipients)
+        raise SignalError("Possible partial delivery; inspect group before retrying", result["timestamp"], partial)
     return result
 
 
@@ -169,6 +172,8 @@ class Signal:
         group = group_info.get("groupId") if isinstance(group_info, dict) else None
         body = message.get("message", "")
         reaction = message.get("reaction")
+        if isinstance(reaction, dict) and "isRemove" not in reaction and type(reaction.get("remove")) is bool:
+            reaction = {**reaction, "isRemove": reaction["remove"]}
         is_reaction = isinstance(reaction, dict) and (
             self.config.data["topic_feedback"] or self.config.data["story_mute"]
             or isinstance(reaction.get("emoji"), str) and reaction_emoji(reaction["emoji"]) == EXPAND_EMOJI)
@@ -234,7 +239,13 @@ class Signal:
                                                 reply = SignalText(reply)
                                             reply = insert_styled(reply, len(reply), f"\n⏳ {REPLY_TTL // 60}m", "ITALIC")
                                         author = self.current_account
-                                        result = await self.send(reply)
+                                        try:
+                                            result = await self.send(reply)
+                                        except SignalError as exc:
+                                            if not cleanup or not exc.delivered_some:
+                                                raise
+                                            result = {"timestamp": exc.signal_timestamp}
+                                            self.store.event("signal", "Routine reply partially delivered; cleanup scheduled.")
                                         current = (self.config.data["group_id"], self.config.data["signal_account"])
                                         if cleanup and self.config.data["reply_cleanup"] and current == scope:
                                             arm_reply(self.store, cmd, result, scope, author or self.current_account)

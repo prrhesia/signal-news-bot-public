@@ -54,6 +54,8 @@ class PublicResolver(AbstractResolver):
 
 
 def text(html, limit=1800):
+    if isinstance(html, str) and "<" not in html and "&" not in html:
+        return " ".join(html[:100_000].split())[:limit]
     return " ".join(BeautifulSoup(str(html or "")[:100_000], "html.parser").get_text(" ", strip=True).split())[:limit]
 
 
@@ -248,9 +250,23 @@ def inline_media(html, url, base_url):
                 page = url
                 posters.add(key)
                 continue
-            if link not in {url, key}:
+            if (nitter_photo and own_status_url(link, url)
+                    and re.search(r"(?:ext_tw_video_thumb|amplify_video_thumb|tweet_video_thumb)", key, re.I)):
+                page = url
+                posters.add(key)
+                continue
+            if (nitter_photo and urlsplit(link).hostname == urlsplit(url).hostname
+                    and urlsplit(link).path.startswith("/pic/") and public_url(link)):
+                candidate = key = link
+            elif link not in {url, key}:
                 continue
         gallery = tag.find_parent(class_="gallery")
+        if gallery is None:
+            # Sibling figures inside the same explicit article are a gallery
+            # even without a publisher-specific gallery class.
+            figure = tag.find_parent("figure")
+            if figure is not None and figure.parent and figure.parent.name == "article":
+                gallery = figure.parent
         photos.setdefault(key, (candidate, nitter_photo, gallery))
     identified = [v for v in photos.values() if v[1]]
     if len(identified) < 2:
@@ -391,11 +407,28 @@ class FeedWorker:
             state = "queued" if feed["initialized"] else "baseline"
             if published < now - self.config.data["max_age_hours"] * 3600 or published > now + 900:
                 state = "expired"
-            html = BeautifulSoup(str(summary)[:100_000], "html.parser")
-            description = " ".join(html.get_text(" ", strip=True).split())[:1800]
+            snippet = str(summary)[:100_000]
+            if "<" in snippet:
+                html = BeautifulSoup(snippet, "html.parser")
+                description = " ".join(html.get_text(" ", strip=True).split())[:1800]
+                inline_photos, inline_clips, nitter_page, posters = inline_media(html, url, base_url)
+            else:
+                description = text(snippet)
+                inline_photos, inline_clips, nitter_page, posters = [], [], "", set()
             inserts.append((feed["id"], guid, url, title, description, published, now, state))
-            inline_photos, inline_clips, nitter_page, posters = inline_media(html, url, base_url)
-            if not entry_images or len(inline_photos) >= 2:
+            # Many Atom/RSS publishers keep rich attachments in content:encoded
+            # and provide only a plain teaser in summary.
+            for block in (entry.get("content") or [])[:2]:
+                value = block.get("value") or ""
+                if value == summary or not re.search(r"<(?:img|video)\b", value[:100_000], re.I):
+                    continue
+                richer = BeautifulSoup(value[:100_000], "html.parser")
+                p, v, page, excluded = inline_media(richer, url, base_url)
+                inline_photos = list(dict.fromkeys(inline_photos + p))
+                inline_clips = list(dict.fromkeys(inline_clips + v))
+                nitter_page = nitter_page or page
+                posters.update(excluded)
+            if inline_photos:
                 existing_images = {canonical_url(image) for image in entry_images}
                 extra_photos = {canonical_url(image): image for image in inline_photos
                                 if canonical_url(image) not in existing_images}

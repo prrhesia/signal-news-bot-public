@@ -8,7 +8,7 @@ Python, SQLite, and systemd; its dashboard is private.
 
 1. Download the versioned install archive and its matching `.sha256` from
    GitHub Releases. Do not substitute GitHub's automatic source-code download.
-   For 1.0.7 (Relay), run `sha256sum -c signal-news-bot-1.0.7.tar.gz.sha256` in the
+   For 1.0.8 (Cadence), run `sha256sum -c signal-news-bot-1.0.8.tar.gz.sha256` in the
    download directory before extracting.
 2. On a fresh Debian 12+ x86_64 VPS, follow the install and registration
    instructions in the [installation guide](INSTALL.md). Register your own dedicated

@@ -1,5 +1,24 @@
 # Release verification
 
+## 1.0.8 Cadence
+
+- 147 source tests passed on Python 3.11.17 and 3.14.10. The Signal fixture
+  covers mixed recipient outcomes, a later reaction, caption edit, mute, and
+  scheduled removal of a routine reply. A rich-content fixture checks that
+  both photos and a video survive an ordinary text teaser.
+- Duplicate regressions compare alternate accounts in both orders, retain
+  a substantive follow-up, and exercise a different editorial focus. The new
+  matcher uses event vocabulary and article evidence, not named-story rules.
+- A populated copy of the checksum-verified Relay fixture preserved settings,
+  account marker, feeds, votes and preference, usage, edits, mute and history.
+  An interrupted send became uncertain as expected. SQLite integrity passed.
+- Same Python 3.11 mock workloads, Relay → Cadence: 4,200 intake rows in
+  6.30 → 2.61 seconds; 60 editorial rows against 2,500 prior posts in
+  0.762 → 0.635 seconds. Both needed two mock requests; mean prompt input
+  fell from 11,332 to 11,208 bytes. Peak Python RSS was about 48 MiB for
+  intake and 56 MiB for editorial in both versions. Timings vary; these
+  are not VPS, provider, or Signal-client measurements.
+
 ## 1.0.7 Relay — 2026-11-23
 
 - The 143-test source suite passed on CPython 3.11.17 and 3.14.10. Relay

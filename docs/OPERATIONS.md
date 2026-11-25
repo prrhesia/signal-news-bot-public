@@ -294,6 +294,16 @@ and normal fallback/cooldown applies. Changes invalidate pending decisions.
 
 Your code and data are separate. An update does **not** replace the data directory.
 
+After updating to Cadence, test reactions on a **new** eligible bot post.
+Old uncertain sends without a recorded timestamp cannot be recovered by the
+update. Check `/feedback`, `/storymute`, `/replycleanup`, `/images`, and
+`/videos` for the saved settings. `/why` on a test post distinguishes a saved
+vote from an unconfirmed edit; `/storymute list` shows whether the mute was
+recorded. Routine bot replies marked `⏳ 3m` are the cleanup targets. For media,
+compare the dashboard candidate, rejection and attachment counts for that entry
+with the actual message. A feed that supplies only one photo or no playable
+MP4 may legitimately produce a single photo or a text post.
+
 1. Obtain the new archive from the same trusted project source; do not run an
    arbitrary archive or installer sent by a stranger. Upload the archive and its
    checksum to the VPS. Send `/pause` then `/mode preview` separately before updating.
@@ -301,10 +311,10 @@ Your code and data are separate. An update does **not** replace the data directo
 
 ```bash
 cd /root &&
-  sha256sum -c signal-news-bot-1.0.7.tar.gz.sha256 &&
-  mkdir newsbot-update-1.0.7 &&
-  tar -xzf signal-news-bot-1.0.7.tar.gz -C newsbot-update-1.0.7 &&
-  newsbotctl update /root/newsbot-update-1.0.7/signal-news-bot &&
+  sha256sum -c signal-news-bot-1.0.8.tar.gz.sha256 &&
+  mkdir newsbot-update-1.0.8 &&
+  tar -xzf signal-news-bot-1.0.8.tar.gz -C newsbot-update-1.0.8 &&
+  newsbotctl update /root/newsbot-update-1.0.8/signal-news-bot &&
   newsbotctl doctor &&
   cat /opt/signal-news-bot/current/VERSION
 ```

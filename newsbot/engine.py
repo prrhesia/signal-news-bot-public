@@ -388,7 +388,7 @@ class Engine:
                 self.store.update_item(item["id"], status="queued", reason="Source-free rewrite required")
                 return
         if item["route"] != "emergency":
-            confirmed = [v for v in recent_stories(self.store, c) if v[0]["status"] in {"sent", "sending", "uncertain"}]
+            confirmed = recent_stories(self.store, c, delivery=True)
             instant = item["route"] == "instant"
             if match := matches_story(item, "" if instant else item["summary"], confirmed, latest_posts(confirmed),
                                       before_ai=instant):
@@ -446,9 +446,14 @@ class Engine:
             self.store.update_item(item["id"], status="sent", sent_at=time.time(), signal_timestamp=str(timestamp),
                                    rendered=rendered, sent_account=author if isinstance(author, str) else "",
                                    media_result=media_result)
-        except Exception:
+        except Exception as error:
             # Network timeouts/partial sends cannot prove non-delivery. Require human review.
-            self.store.update_item(item["id"], status="uncertain", reason="Signal delivery unconfirmed. Check group; dashboard can requeue or dismiss.")
+            receipt = {}
+            if getattr(error, "delivered_some", False):
+                receipt = dict(sent_at=time.time(), signal_timestamp=str(error.signal_timestamp), rendered=rendered,
+                               sent_account=author or getattr(self.signal, "current_account", ""))
+            self.store.update_item(item["id"], status="uncertain", **receipt,
+                                   reason="Signal delivery unconfirmed. Check group; dashboard can requeue or dismiss.")
             self.store.event("warning", "Signal delivery unconfirmed; item moved to uncertain, not retried automatically")
 
     async def run(self):

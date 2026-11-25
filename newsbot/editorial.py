@@ -4,6 +4,7 @@ import json
 import re
 import time
 from decimal import Decimal
+from functools import lru_cache
 from heapq import nlargest
 
 LOOKBACK = 7 * 86400
@@ -110,6 +111,15 @@ def normalized_number(match):
 
 
 def terms(value):
+    return cached_terms(value) if len(value) <= 1800 else parse_terms(value)
+
+
+@lru_cache(maxsize=1024)
+def cached_terms(value):
+    return parse_terms(value)
+
+
+def parse_terms(value):
     value = re.sub(r"\bUS\b", "usa", value)
     value = re.sub(r"\bj[\s.]*p[\s.]*morgan\b", "jpmorgan", value.casefold())
     value = re.sub(r"\bdark[\s-]*web\b", "darkweb", value)
@@ -120,8 +130,8 @@ def terms(value):
     value = re.sub(r"\b(?:gives? (?:the )?green light|gave (?:the )?green light|green[- ]lights?)\b", "approve", value)
     value = TIME_SPAN.sub(lambda m: f"span{SPANS.get(m[1], m[1])}{m[2]}", value)
     value = NUMBER.sub(normalized_number, value)
-    return {ALIASES.get(w, w) for w in WORDS.findall(value)[:80]
-            if w not in STOP and (len(w) > 2 or w.isdigit() or w in {"no", "ai", "uk"})}
+    return frozenset(ALIASES.get(w, w) for w in WORDS.findall(value)[:80]
+                     if w not in STOP and (len(w) > 2 or w.isdigit() or w in {"no", "ai", "uk"}))
 
 
 def metadata(item, field):
@@ -147,7 +157,7 @@ def sql_scope(config):
     return (f"{group} AND {account}", (config["group_id"], config["signal_account"]))
 
 
-def recent_stories(store, config, now=None):
+def recent_stories(store, config, now=None, *, delivery=False):
     cutoff = (time.time() if now is None else now) - LOOKBACK
     scope, params = sql_scope(config)
     # Timestamp/status indexes bound this retrieval. Prod history from 1.0.2 can
@@ -172,12 +182,18 @@ def recent_stories(store, config, now=None):
             stories.append((r, *caches))
 
     add(sent)
-    statuses = ("outbox", "sending", "uncertain") + (("preview",) if config["mode"] == "preview" else ())
+    statuses = ("sending", "uncertain") if delivery else (
+        ("outbox", "sending", "uncertain") + (("preview",) if config["mode"] == "preview" else ()))
     for status in statuses:
         add(store.db.execute(f"""SELECT {columns} FROM items
             WHERE status=? AND discovered>? AND summary!='' AND {scope} ORDER BY discovered DESC LIMIT 180""",
             (status, cutoff, *params)))
     return stories
+
+
+@lru_cache(maxsize=512)
+def story_vocabulary(title, summary, body):
+    return title | summary | body
 
 
 def related(item, stories, limit=4, summary=""):
@@ -189,7 +205,7 @@ def related(item, stories, limit=4, summary=""):
         if item["id"] == row["id"]:
             continue
         old_body = description_terms(row)
-        union = old_title | old_summary | old_body
+        union = story_vocabulary(frozenset(old_title), frozenset(old_summary), frozenset(old_body))
         hits = title & union
         context_hits = len(extra & union)
         if len(hits) < 2 and context_hits < 4:
@@ -282,16 +298,22 @@ def payment_incident(item, summary):
 
 def local_duplicate(item, summary, candidates, *, before_ai=False):
     """Block exact/very close rewrites; leave ambiguous follow-ups to the editor."""
+    if not candidates:
+        return None
     title = terms(item["title"])
     text = terms(summary)
     incoming = title | text
     body = description_terms(item)
     appointment_key = appointment(summary) or appointment(item["title"])
     incident, details = payment_incident(item, summary)
+    new_event = event_profile(item["title"], summary)
     for row, old_title, old_text in candidates:
         if row["id"] == item["id"]:
             continue
         old_body = description_terms(row)
+        if new_event and same_development(new_event, event_profile(row["title"], row["summary"])):
+            if abs((item.get("published") or 0) - (row.get("published") or item.get("published") or 0)) <= 6 * 3600:
+                return row
         if event_echo(item, row, title, old_title, body, old_body):
             return row
         if (not before_ai and appointment_key and not APPOINTMENT_CHANGE.search(item["title"]) and
@@ -328,3 +350,52 @@ def local_duplicate(item, summary, candidates, *, before_ai=False):
                 or overlap >= 5 and similarity >= .78 and len(title & old_title) >= 3):
             return row
     return None
+
+
+EVENT_FAMILIES = (
+    {"conviction", "convicted", "guilty"},
+    {"breach", "hack", "hacked", "intrusion", "cyberattack"},
+    {"acquires", "acquired", "acquisition"},
+    {"premieres", "premiered", "debut", "debuts"},
+    {"postponement", "postponed", "postpones"},
+)
+NEW_STAGE = (EVENT_STAGES - {"no", "not"}) | {
+    "appeal", "appeals", "appealed", "sentence", "sentenced", "sentencing", "fine", "fined",
+    "acquitted", "investigation", "arrest", "arrested", "indicted", "corrected", "unrelated",
+    "may", "might", "could", "expected", "plans", "allegedly",
+}
+OBJECT_FORMS = {"systems": "system", "agencies": "agency", "networks": "network", "venues": "venue"}
+
+
+@lru_cache(maxsize=512)
+def event_profile(title, summary):
+    words = terms(title) | terms(summary)
+    kinds = tuple(i for i, group in enumerate(EVENT_FAMILIES) if words & group)
+    if len(kinds) != 1:
+        return None
+    kind = kinds[0]
+    normalized = frozenset(OBJECT_FORMS.get(w, w) for w in words)
+    names = {s.casefold() for s in re.findall(r"\b[A-Z][\w-]{2,}\b", title + " " + summary)}
+    names &= normalized - STOP - COUNTRIES - CONTEXT_WORDS - EVENT_FAMILIES[kind] - {
+        "newspaper", "court", "jury", "company", "officials", "agency", "major", "federal", "police"}
+    return kind, names, normalized
+
+
+def same_development(a, b):
+    if not a or not b or a[0] != b[0]:
+        return False
+    kind, names, words = a
+    _, old_names, old = b
+    common = words & old
+    if ((words ^ old) & NEW_STAGE or numeric_terms(words) and numeric_terms(old) and numeric_terms(words) != numeric_terms(old)
+            or kind == 0 and (words | old) & {"no", "not"}):
+        return False
+    shared_names = names & old_names
+    if names and old_names and not shared_names:
+        return False
+    evidence = common - names - old_names - COUNTRIES - EVENT_FAMILIES[kind] - CONTEXT_WORDS
+    if shared_names:
+        return bool(len(evidence) >= 2 or len(shared_names) >= 2 or
+                    kind in {0, 1} and (evidence or common & COUNTRIES))
+    # An unnamed dispatch must share jurisdiction and two concrete details.
+    return bool(common & COUNTRIES and len(evidence) >= 2 and (not names or not old_names))
