@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.9 — Lens
+
+- Give the editor up to four older matches that favor uncommon evidence it can
+  actually see. Keep the rolling 15 confirmed posts and existing scope limits.
+  **News & history** shows which prior item IDs were supplied for a decision.
+- Recognize closely spaced rewrites of a counted deployment approval or an
+  outage alert when the feed supports the same actors, scope and quantities.
+  A different authority, changed amount, correction or actual recovery stays
+  eligible. Mutes use the same evidence rather than suppressing a whole subject.
+- Show publication and recorded send times separately, and distinguish media
+  selected for a send from media included in a confirmed send. Partial delivery
+  remains uncertain and is never auto-retried.
+- Keep saved focus, exclusions, provider choices, delivery modes, and the
+  database schema unchanged. The editorial replay runs entirely offline.
+
 ## 1.0.8 — Cadence
 
 - Keep the Signal timestamp and editable caption when the daemon reports a

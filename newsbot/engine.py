@@ -7,7 +7,10 @@ from tempfile import TemporaryDirectory
 
 from .ai import PoolUnavailable, publisher_boilerplate
 from .controls import operational_command
-from .editorial import in_group, latest_posts, local_duplicate, matches_story, recent_stories, related, sql_scope, story_sample, terms
+from .editorial import (
+    RELATED_POSTS, best_stories, editor_stories, in_group, latest_posts, local_duplicate, matches_story,
+    recent_stories, sql_scope, story_frequencies, story_ranks, story_sample, terms,
+)
 from .feeds import fetch_image, item_images, item_videos
 from .formatting import Message, notice, toggle
 from .interactions import (boolean_setting, edit_footer, expand_command, feed_command, numeric_toggle_setting, preference_delta,
@@ -245,20 +248,26 @@ class Engine:
         newest = latest_posts(stories)
         newest_ids = {r["id"] for r, _, _ in newest}
         older = [story for story in stories if story[0]["id"] not in newest_ids]
+        frequencies = None
         eligible = []
         for item in items:
-            close = related(item, older, limit=10)
+            ranked = story_ranks(item, older)
+            close = best_stories(ranked, limit=10)
             if match := local_duplicate(item, "", close + newest, before_ai=True):
                 self.store.update_item(item["id"], expected_status="queued", status="skipped",
-                                       reason=self.repeat_reason(match))
+                                       reason=self.repeat_reason(match), decision="")
                 continue
-            item["related_posts"] = [story_sample(r) for r, _, _ in close[:4]]
+            if len(ranked) > RELATED_POSTS and frequencies is None:
+                frequencies = story_frequencies(older)
+            item["related_posts"] = [story_sample(r) for r, _, _ in editor_stories(item, ranked, frequencies, len(older))]
             eligible.append(item)
         items = eligible
         if not items:
             return
+        recent = [story_sample(r) for r, _, _ in newest]
+        recent_ids = [sample["id"] for sample in recent]
         try:
-            model, decisions = await self.pool.analyze(items, [story_sample(r) for r, _, _ in newest])
+            model, decisions = await self.pool.analyze(items, recent)
         except PoolUnavailable as exc:
             message = str(exc)
             if self.pool_error != message:
@@ -298,8 +307,10 @@ class Engine:
                                            rules=rules, route="", quota=self.pool.footer(model, actual_model=actual),
                                            provider=provider, actual_model=actual,
                                            decision=json.dumps({"preference": shift, "threshold": c["threshold"],
-                                                                "reported": provenance.get("reported", False),
-                                                                "configured_model": definition.get("model", "")}))
+                                                                 "reported": provenance.get("reported", False),
+                                                                 "configured_model": definition.get("model", ""),
+                                                                 "editor_context": {"recent": recent_ids, "related": [
+                                                                     sample["id"] for sample in item["related_posts"]]}}))
             if saved and post and scope == self.scope:
                 stories.append(({"id": item["id"], "title": item["title"], "description": item["description"],
                                   "published": item["published"],
@@ -432,6 +443,7 @@ class Engine:
         attachments = ([video] if video else []) + photos
         message = render_news(item, c, self.pool, definition, sent)
         rendered = recorded_message(message, c["footer_score"] and not item["route"], bool(photos), c["footer_age"])
+        media = media | {"photos_submitted": len(photos), "video_submitted": bool(video)}
         media_result = json.dumps(media) if media["photos_found"] or media["video_found"] else ""
         if not self.store.update_item(item["id"], expected_status="outbox", status="sending", media_result=media_result):
             return

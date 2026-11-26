@@ -3,6 +3,13 @@ from pathlib import Path
 
 VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip()
 RELEASES = {
+    "1.0.9": ("Lens", (
+        "🎯 Find earlier coverage behind similar headlines",
+        "↩️ Skip clear rewrites while retaining corrections and recoveries",
+        "🔕 Apply story mutes without hiding a changed outcome",
+        "🧾 Inspect which prior posts were supplied to the editor",
+        "🎬 Separate media selected for sending from confirmed delivery",
+    )),
     "1.0.8": ("Cadence", (
         "🗳️ Keep editable targets after partial group delivery",
         "🧹 Schedule cleanup for partially delivered bot replies",

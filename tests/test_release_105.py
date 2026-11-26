@@ -339,7 +339,7 @@ class Release105(SignalFixture, unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("alias-5", first_models)
         self.assertIn("alias-5", await self.command("/models 2"))
         version = await self.command("/version")
-        self.assertIn("1.0.8 · Cadence", version)
+        self.assertIn("1.0.9 · Lens", version)
         self.assertEqual(version.count("\n• "), 5)
         self.posted("Some news")
         with patch.object(self.pool, "recap", AsyncMock(return_value=[

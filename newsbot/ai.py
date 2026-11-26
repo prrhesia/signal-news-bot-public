@@ -22,6 +22,7 @@ famous person or related keyword is not evidence that a specific focus rule appl
 For each accepted story, name the applicable focus and the supported concrete change
 in reason. If either is unclear from this feed title/description, don't post.
 Compare each article to recent_posts, its related_posts, and the other input articles.
+Prior IDs identify supplied history; a pending or uncertain prior is not confirmed delivered.
 Match actor + action + object/incident, not just shared words or general topic. A
 different outlet, angle, wording, or equivalent quantity doesn't make an event new.
 Different details of one outcome can all be true without being successive developments.
@@ -30,6 +31,8 @@ regardless of topic. Admit a related story only
 if you can state a concrete new fact: changed impact, a separate decision/order, a
 confirmation, denial, correction, or recovery. A possible consequence paraphrased
 as a concern is not a new fact. Lead with the supported change, not the backstory.
+An application is not an approval and a plan to restore is not a recovery.
+Keep qualifiers like "up to" rather than turning a limit into a committed total.
 Judge on_focus separately: the article's primary development must directly match the
 operator's focus, not merely mention a country, field, public figure or buzzword.
 Skip routine announcements, commentary, recaps, and marginal updates without a clear

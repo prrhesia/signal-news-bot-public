@@ -8,7 +8,7 @@ from aiohttp import web
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .config import validate_models
-from .editorial import metadata
+from .editorial import metadata, recorded_context
 from .feeds import item_images, item_videos, parse_opml
 from .formatting import duration_label
 from .version import VERSION
@@ -67,7 +67,7 @@ def create_app(config, store, pool, signal, engine):
         storage, feed_total, failed_total, feed_matches = {}, 0, 0, 0
         search = request.query.get("q", "")[:200]
         if page in {"news", "overview"}:
-            columns = ("id,status,published,score,model,title,url,summary,reason,quota,provider,actual_model,decision,route,"
+            columns = ("id,status,published,sent_at,score,model,title,url,summary,reason,quota,provider,actual_model,decision,route,"
                        "image_url,image_urls,video_urls,video_page,media_result,"
                        "(SELECT state FROM withdrawals WHERE item_id=items.id) AS withdrawal")
             where, params = ("WHERE status=?", (selected,)) if selected in states and page == "news" else ("", ())
@@ -77,6 +77,7 @@ def create_app(config, store, pool, signal, engine):
                 clips, page_url = item_videos(row)
                 row["media"] = {"photos_found": len(item_images(row)), "video_found": bool(clips or page_url),
                                 **metadata(row, "media_result")}
+                row["editor_context"] = recorded_context(row)
             counts = {r["status"]: r["n"] for r in store.rows("SELECT status,COUNT(*) AS n FROM items GROUP BY status")}
         if page in {"overview", "feeds"}:
             totals = store.one("SELECT COUNT(*) AS n,COUNT(CASE WHEN error!='' THEN 1 END) AS failed FROM feeds WHERE removed=0")

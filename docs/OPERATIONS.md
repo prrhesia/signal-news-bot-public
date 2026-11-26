@@ -294,15 +294,20 @@ and normal fallback/cooldown applies. Changes invalidate pending decisions.
 
 Your code and data are separate. An update does **not** replace the data directory.
 
-After updating to Cadence, test reactions on a **new** eligible bot post.
+After updating, test reactions on a **new** eligible bot post if needed.
 Old uncertain sends without a recorded timestamp cannot be recovered by the
 update. Check `/feedback`, `/storymute`, `/replycleanup`, `/images`, and
 `/videos` for the saved settings. `/why` on a test post distinguishes a saved
 vote from an unconfirmed edit; `/storymute list` shows whether the mute was
 recorded. Routine bot replies marked `⏳ 3m` are the cleanup targets. For media,
-compare the dashboard candidate, rejection and attachment counts for that entry
-with the actual message. A feed that supplies only one photo or no playable
-MP4 may legitimately produce a single photo or a text post.
+compare the dashboard's candidate, rejected and selected counts with the
+actual Signal message. Counts in a confirmed send are not proof of client
+display. A feed that supplies only one photo or no playable MP4 may
+legitimately produce a single photo or a text post. For a repeat, compare the
+earlier and later item IDs plus their **Sent** times, not the article age in
+the footer. On the later item, **Story context supplied to the editor** lists
+the prior IDs actually provided for the last completed analysis. Local
+pre-analysis skips and direct forwards don't have that input record.
 
 1. Obtain the new archive from the same trusted project source; do not run an
    arbitrary archive or installer sent by a stranger. Upload the archive and its
@@ -311,10 +316,10 @@ MP4 may legitimately produce a single photo or a text post.
 
 ```bash
 cd /root &&
-  sha256sum -c signal-news-bot-1.0.8.tar.gz.sha256 &&
-  mkdir newsbot-update-1.0.8 &&
-  tar -xzf signal-news-bot-1.0.8.tar.gz -C newsbot-update-1.0.8 &&
-  newsbotctl update /root/newsbot-update-1.0.8/signal-news-bot &&
+  sha256sum -c signal-news-bot-1.0.9.tar.gz.sha256 &&
+  mkdir newsbot-update-1.0.9 &&
+  tar -xzf signal-news-bot-1.0.9.tar.gz -C newsbot-update-1.0.9 &&
+  newsbotctl update /root/newsbot-update-1.0.9/signal-news-bot &&
   newsbotctl doctor &&
   cat /opt/signal-news-bot/current/VERSION
 ```

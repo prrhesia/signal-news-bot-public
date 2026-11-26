@@ -24,21 +24,21 @@ Hard service caps are 512 MiB Signal + 256 MiB Python; these are not reservation
 
 ## 1. Copy the archive to your VPS
 
-Download the versioned install archive and matching checksum from GitHub
-Releases, not the automatic **Source code** archive. **On your computer**, run
+Obtain the versioned installer and matching checksum from the trusted project
+source, not GitHub's automatic **Source code** archive. **On your computer**, run
 this from the download folder and replace the destination with your VPS address:
 
 ```bash
-scp signal-news-bot-1.0.8.tar.gz signal-news-bot-1.0.8.tar.gz.sha256 root@YOUR_VPS_IP:~/
+scp signal-news-bot-1.0.9.tar.gz signal-news-bot-1.0.9.tar.gz.sha256 root@YOUR_VPS_IP:~/
 ```
 
 **On the VPS, as root:**
 
 ```bash
-sha256sum -c signal-news-bot-1.0.8.tar.gz.sha256 &&
-  mkdir newsbot-install-1.0.8 &&
-  tar -xzf signal-news-bot-1.0.8.tar.gz -C newsbot-install-1.0.8 &&
-  cd newsbot-install-1.0.8/signal-news-bot &&
+sha256sum -c signal-news-bot-1.0.9.tar.gz.sha256 &&
+  mkdir newsbot-install-1.0.9 &&
+  tar -xzf signal-news-bot-1.0.9.tar.gz -C newsbot-install-1.0.9 &&
+  cd newsbot-install-1.0.9/signal-news-bot &&
   bash install.sh
 ```
 

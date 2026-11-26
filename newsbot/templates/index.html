@@ -1,9 +1,22 @@
 {% extends 'base.html' %}
 {% macro csrf_field() %}<input type="hidden" name="csrf" value="{{ csrf }}">{% endmacro %}
 {% macro item_card(i) %}
-<article><span class="badge">{{ i.status }}</span>{% if i.withdrawal %} <span class="badge">Signal purge: {{ i.withdrawal }}</span>{% endif %} <small>#{{ i.id }} · {{ i.published|when }}{% if i.route %} · {{ i|model_label }}{% else %} · score {{ i.score }} · {{ i.model }}{% endif %}</small>
+<article><span class="badge">{{ i.status }}</span>{% if i.withdrawal %} <span class="badge">Signal purge: {{ i.withdrawal }}</span>{% endif %} <small>#{{ i.id }} · Published {{ i.published|when }}{% if i.sent_at and i.status in ['sent','uncertain'] %} · {{ 'Sent' if i.status == 'sent' else 'Unconfirmed receipt' }} {{ i.sent_at|when }}{% endif %}{% if i.route %} · {{ i|model_label }}{% else %} · score {{ i.score }} · {{ i.model }}{% endif %}</small>
 <h3><a href="{{ i.url }}" rel="noreferrer">{{ i.title }}</a></h3>{% if i.summary %}<pre>{{ i.summary }}</pre>{% endif %}<p class="muted">{{ i.reason }}</p>
-{% if i.media.photos_found or i.media.video_found %}<p class="muted">Feed media: {{ i.media.photos_found }} photo candidate(s){% if i.media.photos_attempted %} · {{ i.media.photos_rejected }} rejected or duplicate{% endif %}{% if 'photos_attached' in i.media %} · {{ i.media.photos_attached }} attached{% endif %}{% if i.media.video_found %} · video candidate{% if i.media.video_attached %} attached{% elif i.media.video_rejected %} rejected or unavailable{% endif %}{% endif %}</p>{% endif %}
+{% if i.media.photos_found or i.media.video_found %}
+<p class="muted">Feed media: {{ i.media.photos_found }} photo candidate(s)
+{% if i.media.photos_found and 'photos_attempted' in i.media %}{% if i.media.photos_attempted %} · {{ i.media.photos_rejected }} rejected or duplicate{% else %} · photos not attempted{% endif %}{% endif %}
+{% if i.media.photos_found %}{% if 'photos_attached' in i.media %} · {{ i.media.photos_attached }} photos in confirmed send{% elif i.media.photos_submitted %} · {{ i.media.photos_submitted }} photos selected for send{% endif %}{% endif %}
+{% if i.media.video_found %} · video candidate{% if i.media.video_attached %} in confirmed send{% elif i.media.video_submitted %} selected for send{% elif i.media.video_rejected %} rejected or unavailable{% elif 'video_attempted' in i.media and not i.media.video_attempted %} not attempted{% endif %}{% endif %}
+{% if i.status == 'uncertain' %} · delivery unconfirmed{% endif %}</p>
+{% endif %}
+{% if i.editor_context is not none %}
+<details><summary>Story context supplied to the editor</summary>
+<p class="muted">Local item IDs from the last completed analysis.</p>
+<p>Recent confirmed: {% for id in i.editor_context.recent %}<code>#{{ id }}</code>{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}<br>
+Related (may include pending or unconfirmed): {% for id in i.editor_context.related %}<code>#{{ id }}</code>{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</p>
+</details>
+{% endif %}
 {% if i.quota %}<details><summary>AI provenance & quota at analysis</summary><p class="break">{{ i.quota }}</p><code>{{ i|model_label }}</code></details>{% endif %}
 {% if i.status not in ['sent','sending'] %}<form method="post" action="/action">{{ csrf_field() }}<input type="hidden" name="id" value="{{ i.id }}">
 {% if i.status=='preview' %}<button name="action" value="approve">Approve for live delivery</button>{% endif %}<button name="action" value="retry">Re-analyze{% if i.status=='uncertain' %} — verify group first{% endif %}</button><button name="action" value="dismiss">Dismiss locally</button></form>{% endif %}</article>

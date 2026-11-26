@@ -46,7 +46,7 @@ class Cadence(SignalFixture, unittest.IsolatedAsyncioTestCase):
             await self.react("a", stamp, "👍")
             await self.react("b", stamp, "❌")
             self.assertEqual(vote_tally(self.store, row["id"])["n"], 1)
-            self.assertTrue(muted_story(self.engine, dict(id=100, title=VERDICT[1]), ""))
+            self.assertTrue(muted_story(self.engine, dict(id=100, title=VERDICT[1], published=NOW), ""))
             self.clock.return_value += 30
             await edit_footer(self.engine)
             self.assertEqual(rpc.await_args.args[1]["editTimestamp"], stamp)

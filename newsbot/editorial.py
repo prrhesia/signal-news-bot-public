@@ -3,6 +3,7 @@
 import json
 import re
 import time
+from collections import Counter
 from decimal import Decimal
 from functools import lru_cache
 from heapq import nlargest
@@ -10,6 +11,9 @@ from heapq import nlargest
 LOOKBACK = 7 * 86400
 STORY_CAP = 2500
 RECENT_POSTS = 15
+RELATED_POSTS = 4
+SAMPLE_TITLE = 130
+SAMPLE_TEXT = 150
 STOP = set("""a an and are as at be been being by for from has have in is it its of on or over said say says
 that the their them they this to was were which who will with via after about new latest report reports
 reportedly according data customer customers more now today again""".split())
@@ -17,7 +21,9 @@ WORDS = re.compile(r"[^\W_]+", re.UNICODE)
 NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?:\s*(thousand|million|billion|[kmb])\b)?(?!\w|\.\d)")
 SPANS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
          "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
-TIME_SPAN = re.compile(r"\b(\d{1,3}|" + "|".join(SPANS) + r")[ -]+(day|week|month|year)s?\b")
+TIME_SPAN = re.compile(r"\b(\d{1,3}|" + "|".join(SPANS) + r")[ -]+(hour|day|week|month|year)s?\b")
+SCALED_WORDS = re.compile(r"\b(" + "|".join(SPANS) + r")\s+(thousand|million|billion)\b")
+DASHES = str.maketrans("‐‑‒–—−", "------")
 US_NAMES = re.compile(r"\b(?:u\.s\.a\.?(?!\w)|u\.s\.?(?!\w)|united states\b|trump administration\b)")
 USDA = re.compile(r"\b(?:(?:usa\s+)?(?:department of agriculture|agriculture department)|u\.?s\.?d\.?a\.?)(?!\w)")
 BREACH = re.compile(r"\b(?:cyber[- ]?attacks?|breach(?:ed|es)?|hacks?|hackers?|hacked|ransomware|intrusion)\b", re.I)
@@ -110,6 +116,10 @@ def normalized_number(match):
     return str(int(value)) if value == value.to_integral_value() else "decimal" + format(value.normalize(), "f").replace(".", "p")
 
 
+def spelled_number(match):
+    return f"{SPANS[match[1]]} {match[2]}"
+
+
 def terms(value):
     return cached_terms(value) if len(value) <= 1800 else parse_terms(value)
 
@@ -121,14 +131,16 @@ def cached_terms(value):
 
 def parse_terms(value):
     value = re.sub(r"\bUS\b", "usa", value)
-    value = re.sub(r"\bj[\s.]*p[\s.]*morgan\b", "jpmorgan", value.casefold())
+    value = re.sub(r"\bj[\s.]*p[\s.]*morgan\b", "jpmorgan", value.casefold().translate(DASHES))
     value = re.sub(r"\bdark[\s-]*web\b", "darkweb", value)
     value = US_NAMES.sub("usa", value)
     value = USDA.sub("usda", value)
     value = re.sub(r"\b(?:signs?|signed) off(?: on)?\b", "approve", value)
     value = re.sub(r"\b(?:back online|returned to normal|restored service|service restored)\b", "restore", value)
     value = re.sub(r"\b(?:gives? (?:the )?green light|gave (?:the )?green light|green[- ]lights?)\b", "approve", value)
+    value = re.sub(r"\bdata[ -]+(?:centers?|centres?)\b", "datacenter", value)
     value = TIME_SPAN.sub(lambda m: f"span{SPANS.get(m[1], m[1])}{m[2]}", value)
+    value = SCALED_WORDS.sub(spelled_number, value)
     value = NUMBER.sub(normalized_number, value)
     return frozenset(ALIASES.get(w, w) for w in WORDS.findall(value)[:80]
                      if w not in STOP and (len(w) > 2 or w.isdigit() or w in {"no", "ai", "uk"}))
@@ -196,7 +208,7 @@ def story_vocabulary(title, summary, body):
     return title | summary | body
 
 
-def related(item, stories, limit=4, summary=""):
+def story_ranks(item, stories, summary=""):
     headline = terms(item["title"])
     title = headline | terms(summary)
     extra = description_terms(item) - title
@@ -214,7 +226,48 @@ def related(item, stories, limit=4, summary=""):
                 + len(title & (old_title | old_summary) & EVENT_ACTIONS) * 3
                 + sum(3 for hit in hits if hit.isascii() and hit.isdigit() and len(hit) >= 5))
         matches.append((rank, row["id"], row, old_title, old_summary))
-    return [(r, t, s) for _, _, r, t, s in nlargest(limit, matches, key=lambda v: (v[0], v[1]))]
+    return matches
+
+
+def best_stories(matches, limit=RELATED_POSTS, *, key=None):
+    return [m[2:] for m in nlargest(limit, matches, key=key or (lambda m: m[:2]))]
+
+
+def related(item, stories, limit=RELATED_POSTS, summary=""):
+    return best_stories(story_ranks(item, stories, summary), limit)
+
+
+def story_frequencies(stories):
+    """Count evidence once per scope-bounded history, not once per article."""
+    counts = Counter()
+    for _, title, summary in stories:
+        counts.update(title | summary)
+    return counts
+
+
+def editor_stories(item, matches, frequencies, history_size):
+    """Prioritize uncommon visible evidence for the model, not for auto-skips."""
+    if len(matches) <= RELATED_POSTS:
+        return best_stories(matches)
+    cutoff = max(1, history_size // 8)
+    evidence = terms(item["title"]) | description_terms(item)
+    anchors = {word for word in evidence if len(word) >= 4 and word.isalpha() and 0 < frequencies[word] <= cutoff}
+    if not anchors:
+        return best_stories(matches)
+
+    def score(match):
+        base, item_id, row, title, summary = match
+        shared = anchors & (title | summary)
+        if not shared:
+            return base, item_id
+        # Don't boost a match using words that will be cut from the actual prompt.
+        visible = terms(row["title"][:SAMPLE_TITLE]) | terms(row["summary"][:SAMPLE_TEXT])
+        strong = min(2, len(shared & visible))
+        published, prior = item.get("published"), row.get("published")
+        timely = strong and published is not None and prior is not None and abs(published - prior) <= 86400
+        return base + 12 * strong + 2 * timely, item_id
+
+    return best_stories(matches, key=score)
 
 
 def same_sale(incoming, old):
@@ -239,8 +292,27 @@ def same_sale(incoming, old):
 
 
 def story_sample(row):
-    title, text = row["title"][:130], row["summary"][:150]
-    return {"title": title, "text": text} if terms(text) - terms(title) else {"title": title}
+    title, text = row["title"][:SAMPLE_TITLE], row["summary"][:SAMPLE_TEXT]
+    sample = {"id": row["id"], "title": title}
+    if terms(text) - terms(title):
+        sample["text"] = text
+    if row["status"] != "sent":
+        sample["status"] = "uncertain" if row["status"] == "uncertain" else "pending"
+    return sample
+
+
+def recorded_context(item):
+    """Return bounded local IDs from a completed analysis, if recorded."""
+    if item["route"] or item["status"] in {"queued", "baseline"}:
+        return None
+    context = metadata(item, "decision").get("editor_context")
+    if not isinstance(context, dict):
+        return None
+    for kind, cap in (("recent", RECENT_POSTS), ("related", RELATED_POSTS)):
+        ids = context.get(kind)
+        if not isinstance(ids, list) or len(ids) > cap or any(type(i) is not int or i <= 0 for i in ids):
+            return None
+    return context
 
 
 def latest_posts(stories):
@@ -296,6 +368,97 @@ def payment_incident(item, summary):
     return (None, words)
 
 
+ORG_WORD = r"[A-Z][\w&.-]*"
+ORG = rf"{ORG_WORD}(?: {ORG_WORD}){{0,4}}"
+AUTHORIZED = re.compile(
+    rf"^(?P<authority>[^:;!?]{{2,80}}?) (?i:approves?|approved|clears?|cleared|authorizes?|authorized)"
+    rf" (?P<actor>{ORG})(?:['’]s?)? (?i:(?:(?:plan|proposal) )?to (?:deploy|launch)(?: up to)?) (?P<scope>.+)")
+ALERT_DECLARED = re.compile(
+    rf"^(?P<actor>{ORG}) (?i:declares?|declared|issues?|issued|activates?|activated) "
+    r"(?i:(?:a )?)[“‘\"']*(?i:code (?P<level>[a-z]+))\b")
+RECOVERED = re.compile(r"\b(?:restored|restores|resumed|recovered|back online|returned to normal|lifted)\b", re.I)
+AUTHORITY_PREFIX = re.compile(r"^(?:the )?(?:(?:u\.?s\.?|united states) )?", re.I)
+SCOPE_WORDS = {"based", "operations", "space", "orbital"}
+ALERT_WIDE = {"global", "worldwide"}
+ALERT_GENERIC = ALERT_WIDE | {"major", "outage", "service", "services", "hosted", "tools", "system",
+                             "systems", "forcing", "restore", "knocked", "crews"}
+
+
+def same_authority(a, b):
+    def parts(value):
+        value = AUTHORITY_PREFIX.sub("", value)
+        words = [word for word in value.split() if word.casefold() not in {"of", "the", "and", "for"}]
+        return tuple(word.casefold() for word in words), "".join(word[0].casefold() for word in words), (
+            len(words) == 1 and words[0].isalpha() and words[0].isupper() and len(words[0]) >= 3)
+
+    a_words, a_initials, a_short = parts(a)
+    b_words, b_initials, b_short = parts(b)
+    # Only expand an explicit initialism; two different full names with the
+    # same initials are not the same decision-maker.
+    return bool(a_words and b_words and (a_words == b_words
+                or a_short and len(b_words) > 1 and a_words[0] == b_initials
+                or b_short and len(a_words) > 1 and b_words[0] == a_initials))
+
+
+@lru_cache(maxsize=512)
+def anchored_event(title):
+    """Extract only direct headline claims with measurable, specific anchors."""
+    if m := AUTHORIZED.match(title):
+        # Do not split thousands separators in the count.
+        scope = re.split(r",(?!\d)|[;:]", m["scope"], maxsplit=1)[0]
+        expressed = SCALED_WORDS.sub(spelled_number, scope.casefold())
+        measure = NUMBER.match(expressed)
+        if not measure or re.match(r"[\s-]+(?:usd|eur|dollars?|euros?)\b", expressed[measure.end():]):
+            return None
+        count = normalized_number(measure)
+        words = terms(scope)
+        objects = words & SALES_OBJECTS
+        subject = words - numeric_terms(words) - objects - SCOPE_WORDS - CONTEXT_WORDS
+        if count.isascii() and count.isdigit() and len(count) >= 5 and objects and subject:
+            return ("authorization", m["actor"].casefold(), m["authority"], count, objects, subject)
+    if m := ALERT_DECLARED.match(title):
+        words = terms(title[m.end():])
+        hours = {word for word in words if word.startswith("span") and word.endswith("hour")}
+        if "outage" in words and len(hours) == 1:
+            return ("outage alert", m["actor"].casefold(), m["level"].casefold(), hours, words - hours)
+    return None
+
+
+def feed_reports_change(item, row, words, old_words):
+    if (words ^ old_words) & FEED_CHANGES:
+        return True
+    amount, old_amount = numeric_terms(words), numeric_terms(old_words)
+    if amount and old_amount and amount != old_amount:
+        return True
+
+    def recovered(entry):
+        return bool(RECOVERED.search(entry["title"] + " " + (entry.get("description") or "")[:700]))
+
+    return recovered(item) != recovered(row)
+
+
+def anchored_echo(event, prior, item, row, words, old_words):
+    """Return None for uncovered patterns, otherwise require matching event evidence."""
+    if not event or not prior or event[0] != prior[0]:
+        return None
+    if event[1] != prior[1] or event[3] != prior[3]:
+        return False
+    if event[0] == "authorization":
+        if (not same_authority(event[2], prior[2]) or event[4] != prior[4]
+                or event[5] != prior[5]):
+            return False
+    else:
+        affected, old_affected = event[4], prior[4]
+        place, old_place = affected & COUNTRIES, old_affected & COUNTRIES
+        if (event[2] != prior[2] or place and old_place and place != old_place
+                or not ((affected | old_affected) & ALERT_WIDE
+                        or (affected & old_affected) - ALERT_GENERIC - CONTEXT_WORDS - COUNTRIES)):
+            return False
+    published, previous = item.get("published"), row.get("published")
+    return (published is not None and previous is not None and abs(published - previous) <= 6 * 3600
+            and not feed_reports_change(item, row, words, old_words))
+
+
 def local_duplicate(item, summary, candidates, *, before_ai=False):
     """Block exact/very close rewrites; leave ambiguous follow-ups to the editor."""
     if not candidates:
@@ -307,10 +470,23 @@ def local_duplicate(item, summary, candidates, *, before_ai=False):
     appointment_key = appointment(summary) or appointment(item["title"])
     incident, details = payment_incident(item, summary)
     new_event = event_profile(item["title"], summary)
+    anchor = anchored_event(item["title"])
+    description = (item.get("description") or "").strip() if before_ai else ""
     for row, old_title, old_text in candidates:
         if row["id"] == item["id"]:
             continue
+        # Exact syndication can be recognized even outside the event time window.
+        # Matching titles alone or truncated descriptions can hide an update.
+        if (len(title) >= 4 and 50 <= len(description) < 700 and item["title"] == row["title"]
+                and description == row.get("description")):
+            return row
         old_body = description_terms(row)
+        if anchor:
+            echo = anchored_echo(anchor, anchored_event(row["title"]), item, row, title | body, old_title | old_body)
+            if echo is not None:
+                if echo:
+                    return row
+                continue  # Conflicting or incomplete anchored evidence is not a hard skip.
         if new_event and same_development(new_event, event_profile(row["title"], row["summary"])):
             if abs((item.get("published") or 0) - (row.get("published") or item.get("published") or 0)) <= 6 * 3600:
                 return row
@@ -330,11 +506,6 @@ def local_duplicate(item, summary, candidates, *, before_ai=False):
                     continue  # The underlying feed, not just the generated text, may support a follow-up.
                 return row
         if before_ai:
-            description = (item.get("description") or "").strip()
-            # Matching titles alone (or truncated descriptions) can hide an update.
-            if (len(title) >= 4 and item["title"] == row["title"] and len(description) >= 50
-                    and description == row.get("description") and len(description) < 700):
-                return row
             continue
         # A changed status may represent a new development. Normalized quantities
         # can prove the same approval across a short and a detailed report.
@@ -363,6 +534,9 @@ NEW_STAGE = (EVENT_STAGES - {"no", "not"}) | {
     "appeal", "appeals", "appealed", "sentence", "sentenced", "sentencing", "fine", "fined",
     "acquitted", "investigation", "arrest", "arrested", "indicted", "corrected", "unrelated",
     "may", "might", "could", "expected", "plans", "allegedly",
+}
+FEED_CHANGES = (NEW_STAGE | CHANGES | {"no", "not", "independent", "conditional", "conditions"}) - {
+    "approve", "plans", "restore",
 }
 OBJECT_FORMS = {"systems": "system", "agencies": "agency", "networks": "network", "venues": "venue"}
 

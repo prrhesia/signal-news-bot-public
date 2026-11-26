@@ -59,6 +59,26 @@ regressions for split/chunked JSON, malformed API output, replay/scope checks, f
 feeds, preview/dismissal races, model provenance, update snapshots and rollback.
 Never put real provider keys, verification tokens or Signal account data in tests.
 
+### Replay repeat-coverage cases
+
+```bash
+PYTHONPATH=. python -B tests/replay_editorial.py
+```
+
+The replay seeds labelled chronological cases, puts older dispatches behind
+similar-looking distractors, and inspects the exact request passed to a fake
+editor. It records whether the earlier ID was in that input and whether the
+item was ultimately sent by the mock Signal transport. Use the same script
+with `PYTHONPATH` pointing at a checksum-verified older checkout for a paired
+comparison. The fake editor deliberately skips rewrites only when the labelled
+prior is supplied; this measures the pipeline, not any hosted model's judgment.
+
+Add sanitized feed title/snippet pairs to `tests/test_release_109.py` and pair
+each rewrite with an actual correction, recovery, or separate decision that
+must survive. Keep names or incident exceptions out of production rules. Use
+`tests/benchmark_editorial.py` separately for elapsed time, memory, queue
+counts, and prompt bytes.
+
 ## Future changes and migrations
 
 - Keep persistent state outside the release directory. Existing config values win

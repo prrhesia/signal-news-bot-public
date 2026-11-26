@@ -3,7 +3,7 @@
 import time
 
 from .controls import duration
-from .editorial import local_duplicate, metadata, terms
+from .editorial import description_terms, feed_reports_change, local_duplicate, metadata, terms
 from .formatting import Message, notice, toggle
 from .moderation import DELETE_WINDOW
 from .publishing import queue_post_edit
@@ -22,15 +22,20 @@ def active_mute(engine, item_id, now):
 def muted_story(engine, item, summary):
     if not engine.config.data["story_mute"] or not engine.scope[0]:
         return None
-    rows = engine.store.rows("SELECT id,title,summary FROM story_mutes WHERE group_id=? AND selector=? AND expires>?",
-                             (*engine.scope, time.time()))
+    rows = engine.store.rows("""SELECT m.id,m.title,m.summary,i.published,substr(i.description,1,700) AS description
+        FROM story_mutes m LEFT JOIN items i ON i.id=m.id WHERE m.group_id=? AND m.selector=? AND m.expires>?""",
+                            (*engine.scope, time.time()))
     if not rows:
         return None
     title = terms(item["title"])
     for row in rows:
         old_title = terms(row["title"])
-        if row["id"] == item["id"] or (len(title) >= 5 and title == old_title):
+        if row["id"] == item["id"]:
             return row
+        if len(title) >= 5 and title == old_title:
+            if not feed_reports_change(item, row, title | description_terms(item), old_title | description_terms(row)):
+                return row
+            continue  # A reused headline may hide a correction or recovery in the feed.
         if match := local_duplicate(item, summary, [(row, old_title, terms(row["summary"]))]):
             return match
     return None

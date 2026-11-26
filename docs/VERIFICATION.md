@@ -1,5 +1,36 @@
 # Release verification
 
+## 1.0.9 Lens — 2026-11-25
+
+- 156 source tests passed on CPython 3.11.17 and 3.14.10 with pinned wheels.
+  The new field-derived fixtures use fictional actors and feed text. They
+  catch rewrites in both orders and in one batch even if the mock editor
+  selects all items. Distinct regulators, applicants, counts and outcomes,
+  feed-only corrections, and actual recoveries stay eligible. Active story
+  mutes suppress a later matching rewrite without blocking the follow-up.
+- `tests/replay_editorial.py` against the exact Cadence package and Lens
+  source: the prior dispatch was supplied for 0/3 → 3/3 competing-history
+  rewrites. Mock sends of those rewrites fell from 3/3 to 0/3. Both versions
+  sent both follow-ups and the unrelated in-focus development; neither sent
+  the off-focus or insufficient-evidence case. Eight mock requests on both
+  (37,673 → 40,739 total prompt bytes). This is a test of evidence delivery
+  and guardrails, not a live comparison of providers.
+- With 2,500 retained stories and the same 60-item editorial workload, both
+  screened all 60 in two mock requests. Three-run median local time was
+  1.02 → 1.00 seconds with peak RSS about 56–57 MiB; this is not evidence of
+  faster VPS processing. Mean input grew from 11,208 to 11,809 bytes.
+- The checksum-verified 1.0.8 package seeded a populated synthetic store.
+  Lens preserved configuration bytes, account marker, feed routing, history,
+  votes and weighting, edits, story mutes, usage, search reservation and
+  media metadata. Interrupted send recovery and SQLite integrity passed.
+- A rich entry with a plain teaser supplied two photos and an MP4 to mock
+  Signal RPC. Mixed recipient results kept submitted counts without promoting
+  them to confirmed attachments or retrying. The cited expansion fixtures
+  validate supported duration forms and reject unsupported numbers.
+- Ruff, per-file Bash syntax, ShellCheck, and the pinned Python 3.11 runtime
+  dependency audit passed. No account, real Signal send, live MP4 playback,
+  hosted inference or public Tavily query was tested for this candidate.
+
 ## 1.0.8 Cadence
 
 - 147 source tests passed on Python 3.11.17 and 3.14.10. The Signal fixture
