@@ -1,58 +1,69 @@
 # Signal News Bot
 
-A self-hosted RSS and Atom news editor for **one trusted Signal group**. It
-uses hosted AI to select on-topic developments, skips repeat coverage, and
-sends short summaries with optional photos or video.
+**A self-hosted news desk for one trusted Signal group.**
 
-Runs on Debian 12+ x86_64 with Python 3.11+, SQLite, systemd, and native
-`signal-cli`. No Docker, local model, or frontend build is required.
+Follow public RSS and Atom feeds, use hosted AI to select stories that fit your
+focus, and send short Signal updates when there’s something new to report.
 
-## Get started
+`RSS feeds` → `Preview and review` → `Signal group`
 
-1. Download the versioned **installer** and its `.sha256` file from
-   the repository's **Releases** tab. Don't use
-   GitHub's automatically generated source archive as the installer.
-2. Follow the [installation guide](docs/INSTALL.md) to verify the checksum,
-   register a dedicated Signal account, and open the dashboard over SSH.
-3. Add [eligible AI providers](docs/PROVIDERS.md), a focus, and public feeds
-   or an OPML import. Start in **preview** with a test group.
+**[Download 1.0.9 Lens](https://github.com/prrhesia/signal-news-bot-public/releases/tag/v1.0.9)**
+&nbsp; / &nbsp; [Fresh setup](docs/INSTALL.md)
+&nbsp; / &nbsp; [Update an existing bot](docs/OPERATIONS.md#update-procedure)
 
-Already running the bot? Follow the [update and rollback guide](docs/OPERATIONS.md#update-procedure).
-Do **not** register the Signal account again. Updates preserve private settings,
-subscriptions, history, keys, and account state.
+---
 
-## What it does
+## Get running
 
-- **Selection:** Configurable focus and exclusions, a relevance threshold,
-  and repeat checks before analysis and delivery. Keeps material follow-ups.
-- **Media:** Up to four distinct photos from the same feed entry and one
-  eligible MP4, including supported public Nitter feeds. Use `/images on`
-  or `/videos on`, and `/videos min 75` to set the original AI score cutoff.
-- **Direct feeds:** `/feed instant ID on` skips AI for that feed, always
-  includes its safe item link, and retains the hourly cap.
-- **Context:** Reply `/why` for the original decision, or use `/expand` or
-  🔎 for more saved feed details. Optional web fallback adds cited context
-  only when there are no unused feed details.
-- **Group controls:** `/status`, `/usage`, `/mode preview`, `/pause`, and
-  `/help`. `/dmtest` sends a fixed, private test reply only to its requester.
+| If you’re… | Start here |
+| --- | --- |
+| **Setting up a new VPS** | Download the versioned installer **and** its `.sha256` file. Follow the [install guide](docs/INSTALL.md), register a dedicated Signal account, and try it in preview with a test group. |
+| **Already running the bot** | Use the [update guide](docs/OPERATIONS.md#update-procedure). Pause, enter preview, verify the archive, and run `newsbotctl update`. **Don’t register again.** |
+| **Opening the dashboard** | [Use an SSH tunnel](docs/INSTALL.md#4-open-the-dashboard-securely) and open `http://127.0.0.1:8787` on your computer. Keep the dashboard and Signal daemon off the public internet. |
 
-See the [1.0.9 Lens notes](docs/CHANGELOG.md#109--lens) for what changed.
+Use the release assets, not GitHub’s automatic **Source code** archives.
+The supported install is Debian 12+ x86_64 with Python 3.11+, SQLite, systemd,
+and native `signal-cli`. No Docker, local model, or frontend build.
 
-## Privacy and limits
+## What reaches the group
 
-- The first feed fetch establishes a baseline. Preview doesn't automatically
-  send news, and a send that Signal couldn't confirm is never retried blindly.
-- All members of the configured group can use group commands. Other groups
-  and incoming DMs cannot control the bot. Choose the group accordingly.
-- Keep the dashboard and unauthenticated Signal RPC off the public internet.
-  Secrets stay in the private dashboard/config; don't put account data,
-  real feeds, or private logs in issue reports.
-- AI can be wrong. Feed summaries aren't independently verified. Free-tier
-  availability varies; see quota, data handling, and account rules in the
-  [provider guide](docs/PROVIDERS.md).
+> 📰 🚆 — The North Ferry terminal reopened after repairs. Evening sailings
+> will use the regular berth.
+>
+> *Example dispatch, not a live post.*
 
-## Development and support
+- **News that fits your focus.** Set topics, exclusions, and an hourly limit.
+  The editor compares prior coverage; a correction or recovery can still post.
+- **Media from the right entry.** Attach up to four distinct photos and one
+  eligible MP4. Turn them on separately with `/images on` and `/videos on`.
+- **A faster route for a trusted feed.** `/feed instant ID on` skips AI,
+  includes the source link, and still counts toward the hourly limit.
+- **Context on demand.** Reply with `/why` for the decision or `/expand` for
+  more feed detail. Optional web search can add citations if the feed runs out
+  of useful detail.
 
-- [Development and tests](docs/DEVELOPMENT.md) · [Verification record](docs/VERIFICATION.md)
-- [Operations and commands](docs/OPERATIONS.md) · [Changelog](docs/CHANGELOG.md)
-- [Contribution guide](CONTRIBUTING.md) · [Security reporting](SECURITY.md)
+## What’s new in Lens
+
+Lens looks for distinctive evidence in older coverage, so an earlier dispatch
+is less likely to be crowded out by similar headlines. In the private
+**News & history** dashboard, see which prior item IDs reached the editor,
+when an item was sent, and whether media was selected or included in a
+confirmed send. [See the Lens changelog](docs/CHANGELOG.md#109--lens).
+
+## Start in preview
+
+Set your focus, add [eligible providers](docs/PROVIDERS.md), then add public
+feeds or import an OPML file. The first fetch establishes a baseline. In preview,
+review picks, skipped repeats, and genuine follow-ups before enabling live
+delivery. Use `/status`, `/usage`, and `/help` from the configured group.
+
+> [!IMPORTANT]
+> Only use a trusted group: its members can run bot commands. If Signal can’t
+> confirm a send, check the group before requeueing it. AI summaries are not
+> independent fact checks, and free-tier capacity varies by provider.
+
+## Project references
+
+[Operations](docs/OPERATIONS.md) · [Provider setup](docs/PROVIDERS.md) ·
+[Verification](docs/VERIFICATION.md) · [Development](docs/DEVELOPMENT.md) ·
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
