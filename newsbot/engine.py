@@ -251,6 +251,10 @@ class Engine:
         frequencies = None
         eligible = []
         for item in items:
+            if mute := muted_story(self, item, ""):
+                self.store.update_item(item["id"], expected_status="queued", status="skipped",
+                                       reason=f"🔕 Story muted · #{mute['id']}", decision="")
+                continue
             ranked = story_ranks(item, older)
             close = best_stories(ranked, limit=10)
             if match := local_duplicate(item, "", close + newest, before_ai=True):
@@ -335,7 +339,8 @@ class Engine:
             "SELECT 1 FROM feeds WHERE id=? AND instant=1 AND enabled=1 AND removed=0", (item["feed_id"],)))
 
     def hour_count(self):
-        return self.store.one("SELECT COUNT(*) AS n FROM items WHERE status='sent' AND sent_at>?", (time.time() - 3600,))["n"]
+        account = getattr(self.signal, "current_account", "")
+        return self.store.post_slots_last_hour(self.config.data, account if isinstance(account, str) else "")
 
     def live(self):
         c = self.config.data

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0 — Continuity
+
+- Keep strongly identified rewrites from resurfacing days later. Favor matching
+  event evidence when searching older coverage, check active mutes before
+  analysis, and keep distinct developments eligible. The editor must still
+  judge focus fit from the primary action and feed evidence.
+- Use the same rolling-hour post count for delivery, the footer and `/queue`.
+  A partial receipt with a known successful recipient consumes a slot while
+  remaining unconfirmed. Posts in another group/account do not consume slots.
+- Recognize extensionless MP4 sources advertised with MIME parameters in
+  inline feed markup and supported Nitter status pages. Submissions still use
+  the same ownership, validation and size checks.
+- Let 🔎 and quoted `/expand` reach opt-in search when the feed only rephrases
+  the headline. Keep usable result links available when a model cannot
+  produce a cited summary. See private `expansion` events for skipped or failed
+  requests without exposing keys, headlines or raw responses.
+
 ## 1.0.9 — Lens
 
 - Give the editor up to four older matches that favor uncommon evidence it can

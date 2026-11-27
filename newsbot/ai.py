@@ -21,11 +21,16 @@ Honor explicit exceptions in those rules. A headline's prominence, U.S. location
 famous person or related keyword is not evidence that a specific focus rule applies.
 For each accepted story, name the applicable focus and the supported concrete change
 in reason. If either is unclear from this feed title/description, don't post.
+Check the actual actor and action in the story before using its topic as proof of fit.
+Treat a recap, a backdated incident, or a rewrite newly published by another outlet
+as old coverage unless the feed clearly says what has materially changed since.
 Compare each article to recent_posts, its related_posts, and the other input articles.
 Prior IDs identify supplied history; a pending or uncertain prior is not confirmed delivered.
 Match actor + action + object/incident, not just shared words or general topic. A
 different outlet, angle, wording, or equivalent quantity doesn't make an event new.
 Different details of one outcome can all be true without being successive developments.
+For example, a rounded duration or a different count format is not an update by
+itself. A newly issued correction or a new measurement with a distinct result can be.
 Choose at most one account per outcome. Ask what happened since the earlier dispatch,
 regardless of topic. Admit a related story only
 if you can state a concrete new fact: changed impact, a separate decision/order, a

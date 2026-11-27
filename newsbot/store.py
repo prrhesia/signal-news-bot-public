@@ -5,6 +5,8 @@ import time
 from contextlib import nullcontext
 from datetime import datetime, timezone
 
+from .editorial import sql_scope
+
 
 class Store:
     def __init__(self, path, recover=False):
@@ -156,6 +158,18 @@ class Store:
         params = (route, feed_id) if feed_id is not None else (route,)
         self.execute("""UPDATE items SET status='queued',route='',summary='',rules='',reason='Awaiting editorial review'
                       WHERE status='outbox' AND route=?""" + condition, params)
+
+    def post_slots_last_hour(self, config, account="", now=None):
+        if not config["group_id"]:
+            return 0
+        now = time.time() if now is None else now
+        scope, params = sql_scope(config)
+        # A mixed receipt with a successful recipient can already be visible.
+        # It uses a slot without becoming a confirmed group delivery.
+        return self.one(f"""SELECT COUNT(*) AS n FROM items
+            WHERE status IN ('sent','uncertain') AND (status='sent' OR signal_timestamp!='')
+            AND sent_at>? AND sent_at<=? AND {scope}
+            AND (?='' OR sent_account='' OR sent_account=?)""", (now - 3600, now, *params, account, account))["n"]
 
     @staticmethod
     def article_digests(feed_id, guid, url):

@@ -32,9 +32,12 @@ An output-validation error is different from a network timeout, TLS error or HTT
 401/403/429. A one-article success still needs a preview test with your real feed batch.
 
 `/footer` lists the independent switches: `model`, `usage`, `age`, `source`,
-`hourly` and `score`. `/footer hourly on` shows posts **sent** in the rolling
-hour, including this one (`📰 1/30` on the first post). Emergency posts may
-push the numerator past the limit. `/footer score on` shows `🎯 86`
+`hourly` and `score`. `/footer hourly on` shows **post slots used** in the
+rolling hour for this group/account, including this one (`📰 1/30` on the
+first post). A receipt with at least one successful recipient uses a slot
+even if delivery to the group is uncertain. A timeout with no positive
+receipt does not. `/queue` shows the same running count. Emergency posts
+may push it past the limit. `/footer score on` shows `🎯 86`
 (relevance, not truth). `187/900 calls` is the bot’s remaining daily
 attempts for the generating alias, not the provider balance.
 Age is the last footer line and comes from the feed timestamp, not the start of
@@ -172,13 +175,17 @@ stories are not automatically re-analyzed; use the dashboard for individual retr
   Ordinary chat and individual votes are not sent to an AI provider.
 - React 🔎 or quote with `/expand` for one follow-up reply on a bot post sent in
   the last 24 hours. Saved, unused feed details go first and use no AI quota.
-  If none were saved, the optional **Settings → Web details** fallback searches the
-  public headline with Tavily, and makes at most one AI attempt on the snippets.
-  Only the verified IDs of search results can become citation links. No chat,
+  If there are no substantive feed details, the optional **Settings → Web details**
+  fallback searches the public headline with Tavily and makes at most one AI
+  attempt on the snippets. If no model is ready or citation checks fail, eligible
+  search links can still be returned without a generated summary. No chat,
   private identifiers, or article URLs are sent as the query. The fallback
   defaults off. Keep Tavily on a free plan with billing off; the bot allows
   12 search attempts per UTC day and 200 per UTC month. Details require live,
   unpaused posting. Use the command to keep your existing vote reaction.
+  If a reply is missing, check the private dashboard's **Operational events**
+  for the `expansion` event: it distinguishes feed-only replies, search
+  configuration and quota, provider availability, citation checks, and Signal.
 - Send `/dmtest` without arguments in the configured group. The bot sends a
   fixed test message directly to you, even in preview, with no group success
   reply. It rejects other recipients, limits repeat requests, and never
@@ -199,15 +206,18 @@ stories are not automatically re-analyzed; use the dashboard for individual retr
   `/images min 75` requires an original AI score of 75 or more by default.
   Photos are capped at 1 MB each; size variants and unrelated cards are omitted.
 - `/videos on` attaches one eligible MP4; `/videos min 75` sets its independent
-  original AI score cutoff. On instant feeds only the toggles apply. Relay
-  accepts RSS/Atom enclosures, Media RSS, and item-level video markup. If a public
+   original AI score cutoff. On instant feeds only the toggles apply. The bot
+   accepts RSS/Atom enclosures, Media RSS, and item-level video markup, including
+   MP4 sources without a filename extension when correctly typed. If a public
   Nitter item identifies only its own status thumbnail, the bot checks that status's
   video/download link. Clips are capped at 16 MiB and downloaded just before
   sending. HLS-only streams, authenticated instances, and arbitrary embedded
   players aren't supported. Unavailable media is omitted. An unconfirmed
   Signal send is never retried as a text copy.
 - The private **News & history** cards show candidates, rejected/duplicate
-  photos and confirmed attachment counts. They don't show media download URLs.
+   photos or videos, selected attachments, and attachments in a confirmed send.
+   A confirmed attachment still needs a playback check in Signal. The dashboard
+   doesn't show media download URLs.
 
 ### Removing messages from Signal
 
@@ -316,10 +326,10 @@ pre-analysis skips and direct forwards don't have that input record.
 
 ```bash
 cd /root &&
-  sha256sum -c signal-news-bot-1.0.9.tar.gz.sha256 &&
-  mkdir newsbot-update-1.0.9 &&
-  tar -xzf signal-news-bot-1.0.9.tar.gz -C newsbot-update-1.0.9 &&
-  newsbotctl update /root/newsbot-update-1.0.9/signal-news-bot &&
+  sha256sum -c signal-news-bot-1.1.0.tar.gz.sha256 &&
+  mkdir newsbot-update-1.1.0 &&
+  tar -xzf signal-news-bot-1.1.0.tar.gz -C newsbot-update-1.1.0 &&
+  newsbotctl update /root/newsbot-update-1.1.0/signal-news-bot &&
   newsbotctl doctor &&
   cat /opt/signal-news-bot/current/VERSION
 ```

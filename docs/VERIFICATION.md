@@ -1,5 +1,27 @@
 # Release verification
 
+## 1.1.0 Continuity — 2026-11-27
+
+- 176 source tests passed on CPython 3.11.17 and 3.14.10 with pinned wheels.
+  `tests/test_release_110.py` covers three-day rewrites and lookalike coverage
+  competing for older history slots. Different authorities, counts, scopes,
+  corrections, recovery and later monitoring results remain separate.
+- `tests/test_hourly_counter.py` checks consecutive full and partial receipts,
+  an indeterminate timeout, a different group/account, the exact rolling-hour
+  edge and restart recovery. The same count drives the footer, `/queue` and cap.
+- `tests/test_expansion_reliability.py` exercises the reaction and quoted
+  command, one shared reservation, substantive feed details, cited results,
+  link-only results when inference is unavailable, and private diagnostics.
+  `tests/test_video_delivery.py` checks typed extensionless MP4 from feed
+  and same-status markup and rejects unrelated media.
+- The checksum-verified Lens installer seeded a populated fixture. Continuity
+  preserved the configuration, synthetic account marker, checked state across
+  12 tables, vote weights and edit targets. In-flight recovery produced
+  `uncertain`; schema version remained 1 and SQLite integrity passed.
+- Ruff, individual Bash syntax checks, pinned environment dependency checks
+  and the Python 3.11 runtime dependency audit passed. All app checks were
+  synthetic; no live provider, Tavily, Signal playback or VPS action.
+
 ## 1.0.9 Lens — 2026-11-25
 
 - 156 source tests passed on CPython 3.11.17 and 3.14.10 with pinned wheels.

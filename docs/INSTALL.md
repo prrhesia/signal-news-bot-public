@@ -29,16 +29,16 @@ source, not GitHub's automatic **Source code** archive. **On your computer**, ru
 this from the download folder and replace the destination with your VPS address:
 
 ```bash
-scp signal-news-bot-1.0.9.tar.gz signal-news-bot-1.0.9.tar.gz.sha256 root@YOUR_VPS_IP:~/
+scp signal-news-bot-1.1.0.tar.gz signal-news-bot-1.1.0.tar.gz.sha256 root@YOUR_VPS_IP:~/
 ```
 
 **On the VPS, as root:**
 
 ```bash
-sha256sum -c signal-news-bot-1.0.9.tar.gz.sha256 &&
-  mkdir newsbot-install-1.0.9 &&
-  tar -xzf signal-news-bot-1.0.9.tar.gz -C newsbot-install-1.0.9 &&
-  cd newsbot-install-1.0.9/signal-news-bot &&
+sha256sum -c signal-news-bot-1.1.0.tar.gz.sha256 &&
+  mkdir newsbot-install-1.1.0 &&
+  tar -xzf signal-news-bot-1.1.0.tar.gz -C newsbot-install-1.1.0 &&
+  cd newsbot-install-1.1.0/signal-news-bot &&
   bash install.sh
 ```
 
@@ -102,7 +102,7 @@ newsbotctl signal -a '+15555550123' updateGroup -g 'BASE64_GROUP_ID'
 **On your computer**, keep this SSH tunnel running:
 
 ```bash
-ssh -N -L 8787:127.0.0.1:8787 root@YOUR_VPS_IP
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8787:127.0.0.1:8787 root@YOUR_VPS_IP
 ```
 
 Open **http://127.0.0.1:8787** in your computer's browser:

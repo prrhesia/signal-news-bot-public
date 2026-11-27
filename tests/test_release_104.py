@@ -119,7 +119,7 @@ class Group104(Base, unittest.IsolatedAsyncioTestCase):
             eligible = self.news("A bank restored payment systems")
             self.store.execute("INSERT INTO edit_targets VALUES(?,?)", (str((NOW - 5) * 1000), eligible["id"]))
             self.news("Almost a day old", age=86399, signal_timestamp=str((NOW - 86401) * 1000))
-            self.news("Send was ambiguous", "uncertain")
+            self.news("A recipient accepted this unconfirmed send", "uncertain")
             self.news("Wrong group", rules='{"group_id":"different"}')
             self.news("Previous account", sent_account="other-account")
             self.news("Outside selected window", age=3600)
@@ -139,7 +139,7 @@ class Group104(Base, unittest.IsolatedAsyncioTestCase):
             rpc.assert_awaited_once_with("remoteDelete", {"groupId": self.group, "targetTimestamp": int(eligible["signal_timestamp"])})
             self.assertIn("Accepted: 1", await self.command("/purge status"))
             self.assertEqual(self.store.one("SELECT status FROM items WHERE id=?", (eligible["id"],))["status"], "sent")
-            self.assertIn("Sent in the last hour: 5", await self.engine.command("/queue"))
+            self.assertIn("Post slots used in the last hour: 4", await self.engine.command("/queue"))
 
     async def test_purge_partial_response_is_unconfirmed_and_not_retried_or_recapped(self):
         self.config.update(paused=True)

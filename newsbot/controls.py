@@ -275,8 +275,8 @@ def operational_command(engine, name, arg, source):
         for r in store.rows("SELECT status,COUNT(*) AS n FROM items WHERE status IN ('queued','outbox','sending','uncertain','preview') GROUP BY status"):
             m.line(f"• {r['status']}: {r['n']}")
         m.line("• Mode: " + c["mode"])
-        sent = store.one("SELECT COUNT(*) AS n FROM items WHERE status='sent' AND sent_at>?", (time.time() - 3600,))["n"]
-        m.line(f"• Sent in the last hour: {sent} / {c['max_posts_per_hour']}")
+        sent = engine.hour_count()
+        m.line(f"• Post slots used in the last hour: {sent} / {c['max_posts_per_hour']}")
         if sent >= c["max_posts_per_hour"]:
             m.line("⏳ Hourly posting limit reached")
         if c["paused"]:

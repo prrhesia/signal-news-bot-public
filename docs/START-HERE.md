@@ -8,7 +8,7 @@ Python, SQLite, and systemd; its dashboard is private.
 
 1. Obtain the versioned installer and its matching `.sha256` from the trusted
    project source. Do not substitute GitHub's automatic source-code download.
-   For 1.0.9 (Lens), run `sha256sum -c signal-news-bot-1.0.9.tar.gz.sha256` in the
+   For 1.1.0 (Continuity), run `sha256sum -c signal-news-bot-1.1.0.tar.gz.sha256` in the
    download directory before extracting.
 2. On a fresh Debian 12+ x86_64 VPS, follow the install and registration
    instructions in the [installation guide](INSTALL.md). Register your own dedicated

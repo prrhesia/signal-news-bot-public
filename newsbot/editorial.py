@@ -22,7 +22,7 @@ NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?:\
 SPANS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
          "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
 TIME_SPAN = re.compile(r"\b(\d{1,3}|" + "|".join(SPANS) + r")[ -]+(hour|day|week|month|year)s?\b")
-SCALED_WORDS = re.compile(r"\b(" + "|".join(SPANS) + r")\s+(thousand|million|billion)\b")
+SCALED_WORDS = re.compile(r"\b(" + "|".join(SPANS) + r"|a)\s+(thousand|million|billion)\b")
 DASHES = str.maketrans("‐‑‒–—−", "------")
 US_NAMES = re.compile(r"\b(?:u\.s\.a\.?(?!\w)|u\.s\.?(?!\w)|united states\b|trump administration\b)")
 USDA = re.compile(r"\b(?:(?:usa\s+)?(?:department of agriculture|agriculture department)|u\.?s\.?d\.?a\.?)(?!\w)")
@@ -117,7 +117,7 @@ def normalized_number(match):
 
 
 def spelled_number(match):
-    return f"{SPANS[match[1]]} {match[2]}"
+    return f"{SPANS.get(match[1], 1)} {match[2]}"
 
 
 def terms(value):
@@ -139,6 +139,7 @@ def parse_terms(value):
     value = re.sub(r"\b(?:back online|returned to normal|restored service|service restored)\b", "restore", value)
     value = re.sub(r"\b(?:gives? (?:the )?green light|gave (?:the )?green light|green[- ]lights?)\b", "approve", value)
     value = re.sub(r"\bdata[ -]+(?:centers?|centres?)\b", "datacenter", value)
+    value = re.sub(r"\bno (?=airborne\b)", "zero ", value)
     value = TIME_SPAN.sub(lambda m: f"span{SPANS.get(m[1], m[1])}{m[2]}", value)
     value = SCALED_WORDS.sub(spelled_number, value)
     value = NUMBER.sub(normalized_number, value)
@@ -211,7 +212,9 @@ def story_vocabulary(title, summary, body):
 def story_ranks(item, stories, summary=""):
     headline = terms(item["title"])
     title = headline | terms(summary)
-    extra = description_terms(item) - title
+    body = description_terms(item)
+    extra = body - title
+    event = anchored_event(item["title"])
     matches = []
     for row, old_title, old_summary in stories:
         if item["id"] == row["id"]:
@@ -225,6 +228,9 @@ def story_ranks(item, stories, summary=""):
         rank = (len(hits) * 3 + len(headline & old_title) * 4 + min(15, context_hits)
                 + len(title & (old_title | old_summary) & EVENT_ACTIONS) * 3
                 + sum(3 for hit in hits if hit.isascii() and hit.isdigit() and len(hit) >= 5))
+        if (event and len(headline & old_title) >= 2
+                and anchored_echo(event, anchored_event(row["title"]), item, row, headline | body, old_title | old_body)):
+            rank += 1000  # A matching event should survive crowded retrieval.
         matches.append((rank, row["id"], row, old_title, old_summary))
     return matches
 
@@ -372,16 +378,24 @@ ORG_WORD = r"[A-Z][\w&.-]*"
 ORG = rf"{ORG_WORD}(?: {ORG_WORD}){{0,4}}"
 AUTHORIZED = re.compile(
     rf"^(?P<authority>[^:;!?]{{2,80}}?) (?i:approves?|approved|clears?|cleared|authorizes?|authorized)"
-    rf" (?P<actor>{ORG})(?:['’]s?)? (?i:(?:(?:plan|proposal) )?to (?:deploy|launch)(?: up to)?) (?P<scope>.+)")
+    rf" (?P<actor>{ORG})(?:['’]s?)? (?i:(?:(?:plan|proposal) )?to (?:deploy|launch|place|put)(?: up to)?) (?P<scope>.+)")
 ALERT_DECLARED = re.compile(
-    rf"^(?P<actor>{ORG}) (?i:declares?|declared|issues?|issued|activates?|activated) "
+    rf"^(?P<actor>{ORG}) (?i:declares?|declared|issues?|issued|activates?|activated|announces?|announced) "
     r"(?i:(?:a )?)[“‘\"']*(?i:code (?P<level>[a-z]+))\b")
+REPORTING_ROLE = r"(?:Administrator|Director|Commissioner|Chair|Secretary)"
+AIR_READING = re.compile(
+    rf"^(?P<actor>{ORG})(?: {REPORTING_ROLE} {PERSON})? "
+    r"(?i:reports?|reported|says?|said|announces?|announced|found|finds?) "
+    r"(?i:(?:.{0,80}?\b)?(?:no|zero) airborne (?P<substance>[a-z-]+)\b"
+    r"(?:[^,;]{0,70})? after (?P<context>.+))")
+OFFICIAL_ROLE = re.compile(rf" {REPORTING_ROLE} [A-Z].*")
 RECOVERED = re.compile(r"\b(?:restored|restores|resumed|recovered|back online|returned to normal|lifted)\b", re.I)
 AUTHORITY_PREFIX = re.compile(r"^(?:the )?(?:(?:u\.?s\.?|united states) )?", re.I)
-SCOPE_WORDS = {"based", "operations", "space", "orbital"}
+SCOPE_WORDS = {"based", "operations", "space", "orbital", "build", "network", "expanding", "infrastructure"}
 ALERT_WIDE = {"global", "worldwide"}
 ALERT_GENERIC = ALERT_WIDE | {"major", "outage", "service", "services", "hosted", "tools", "system",
-                             "systems", "forcing", "restore", "knocked", "crews"}
+                             "systems", "forcing", "restore", "knocked", "crews", "hit", "million", "millions"}
+AIR_CONTEXT = {"completed", "complete", "completes", "following", "controlled", "officials"}
 
 
 def same_authority(a, b):
@@ -405,7 +419,7 @@ def anchored_event(title):
     """Extract only direct headline claims with measurable, specific anchors."""
     if m := AUTHORIZED.match(title):
         # Do not split thousands separators in the count.
-        scope = re.split(r",(?!\d)|[;:]", m["scope"], maxsplit=1)[0]
+        scope = re.split(r",(?!\d)|[;:]|[.!?](?:\s|$)", m["scope"], maxsplit=1)[0]
         expressed = SCALED_WORDS.sub(spelled_number, scope.casefold())
         measure = NUMBER.match(expressed)
         if not measure or re.match(r"[\s-]+(?:usd|eur|dollars?|euros?)\b", expressed[measure.end():]):
@@ -417,17 +431,28 @@ def anchored_event(title):
         if count.isascii() and count.isdigit() and len(count) >= 5 and objects and subject:
             return ("authorization", m["actor"].casefold(), m["authority"], count, objects, subject)
     if m := ALERT_DECLARED.match(title):
-        words = terms(title[m.end():])
-        hours = {word for word in words if word.startswith("span") and word.endswith("hour")}
+        tail = title[m.end():]
+        words = terms(tail)
+        hours = [int(word[4:-4]) for word in words if re.fullmatch(r"span\d{1,3}hour", word)]
         if "outage" in words and len(hours) == 1:
-            return ("outage alert", m["actor"].casefold(), m["level"].casefold(), hours, words - hours)
+            names = {name.casefold() for name in re.findall(r"\b[A-Z][\w-]{2,}\b", tail)}
+            return ("outage alert", m["actor"].casefold(), m["level"].casefold(), hours[0], words, names)
+    if m := AIR_READING.match(title):
+        context = re.split(r"[,;]", m["context"], maxsplit=1)[0]
+        names = {name.casefold() for name in re.findall(r"\b[A-Z][\w-]{2,}\b", context)}
+        authority = OFFICIAL_ROLE.sub("", m["actor"])
+        return ("air reading", authority, m["substance"].casefold(), terms(context) - AIR_CONTEXT, names)
     return None
 
 
-def feed_reports_change(item, row, words, old_words):
+def feed_reports_change(item, row, words, old_words, *, rounded_hours=frozenset()):
     if (words ^ old_words) & FEED_CHANGES:
         return True
-    amount, old_amount = numeric_terms(words), numeric_terms(old_words)
+    amount = numeric_terms(words) - rounded_hours
+    old_amount = numeric_terms(old_words) - rounded_hours
+    if rounded_hours and amount != old_amount:
+        if any(word.endswith("hour") for word in amount ^ old_amount):
+            return True
     if amount and old_amount and amount != old_amount:
         return True
 
@@ -441,22 +466,31 @@ def anchored_echo(event, prior, item, row, words, old_words):
     """Return None for uncovered patterns, otherwise require matching event evidence."""
     if not event or not prior or event[0] != prior[0]:
         return None
-    if event[1] != prior[1] or event[3] != prior[3]:
+    published, previous = item.get("published"), row.get("published")
+    if published is None or previous is None or abs(published - previous) > LOOKBACK:
         return False
     if event[0] == "authorization":
-        if (not same_authority(event[2], prior[2]) or event[4] != prior[4]
-                or event[5] != prior[5]):
+        return (event[1] == prior[1] and same_authority(event[2], prior[2])
+                and event[3:] == prior[3:] and not feed_reports_change(item, row, words, old_words))
+    if event[0] == "air reading":
+        return (same_authority(event[1], prior[1]) and event[2] == prior[2] and event[3] == prior[3]
+                and bool(event[4] & prior[4] & event[3]) and not feed_reports_change(item, row, words, old_words))
+    _, actor, level, hours, affected, names = event
+    _, old_actor, old_level, old_hours, old_affected, old_names = prior
+    place, old_place = affected & COUNTRIES, old_affected & COUNTRIES
+    if actor != old_actor or level != old_level or place and old_place and place != old_place:
+        return False
+    specific = (affected & old_affected) - ALERT_GENERIC - CONTEXT_WORDS - COUNTRIES
+    strong_scope = len(specific & names & old_names) >= 2
+    if abs(published - previous) > 6 * 3600 or hours != old_hours:
+        # New alerts at the same organization can look alike. A later rewrite
+        # or a rounded time estimate needs the same named affected services.
+        if not strong_scope or abs(hours - old_hours) > 3:
             return False
-    else:
-        affected, old_affected = event[4], prior[4]
-        place, old_place = affected & COUNTRIES, old_affected & COUNTRIES
-        if (event[2] != prior[2] or place and old_place and place != old_place
-                or not ((affected | old_affected) & ALERT_WIDE
-                        or (affected & old_affected) - ALERT_GENERIC - CONTEXT_WORDS - COUNTRIES)):
-            return False
-    published, previous = item.get("published"), row.get("published")
-    return (published is not None and previous is not None and abs(published - previous) <= 6 * 3600
-            and not feed_reports_change(item, row, words, old_words))
+    elif not specific and not (affected | old_affected) & ALERT_WIDE:
+        return False
+    rounded = {f"span{hours}hour", f"span{old_hours}hour"} if hours != old_hours else frozenset()
+    return not feed_reports_change(item, row, words, old_words, rounded_hours=rounded)
 
 
 def local_duplicate(item, summary, candidates, *, before_ai=False):

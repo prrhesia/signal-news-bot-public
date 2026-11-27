@@ -6,7 +6,7 @@ import time
 
 from .ai import PoolUnavailable, split_story_text, unique_emoji
 from .editorial import LOOKBACK, in_group, local_duplicate, metadata, related, sql_scope, terms
-from .expansion import web_details
+from .expansion import feed_details, plain_details, web_details
 from .feeds import signalled_feed_url
 from .formatting import EXPAND_EMOJI, SIGNAL_INLINE_BYTES, Message, notice, reaction_emoji, toggle
 from .moderation import DELETE_WINDOW, valid_target, visible_post
@@ -163,92 +163,139 @@ def weighted_feedback(net, weight):
     return max(-10, min(10, net * weight))
 
 
-def feed_details(row):
-    body = re.sub(r"\bhttps?://\S+", "", " ".join((row["description"] or "").split()), flags=re.I)
-    known = terms(row["summary"]) | terms(row["title"])
-    added = []
-    for sentence in re.split(r"(?<!\b[A-Z]\.[A-Z]\.)(?<=[.!?])\s+(?=[A-Z0-9])", body):
-        extra = terms(sentence) - known
-        if len(sentence) > 320 or not extra or len(extra) == 1 and len(terms(sentence)) > 5:
-            continue
-        added.append(sentence.strip())
-        known |= extra
-        if len(added) == 3:
-            break
-    return added
+def expansion_event(store, detail, *, throttle=False):
+    # Reactions on ordinary group messages can be frequent. Keep ignored-event
+    # diagnostics bounded without writing any Signal identifiers.
+    if throttle:
+        key = "expansion:" + detail
+        if not store.maintenance_due(key, 60):
+            return
+        store.mark_maintenance(key)
+    store.event("expansion", detail)
 
 
-def expansion_current(engine, row, scope, author):
+def expansion_blocker(engine, row, scope, author):
+    c = engine.config.data
+    if scope != engine.scope or not in_group(row, c):
+        return "group or selected account changed"
+    if not author or engine.signal.current_account != author or row["sent_account"] not in {"", author}:
+        return "posting account is unavailable or changed"
+    if not engine.live():
+        if engine.maintenance:
+            return "maintenance is active"
+        if c["paused"]:
+            return "posting is paused"
+        if c["mode"] != "live":
+            return "posting is in preview"
+        return "Signal is disconnected"
     now = time.time()
-    return (scope == engine.scope and engine.live() and author and engine.signal.current_account == author
-            and in_group(row, engine.config.data) and row["sent_account"] in {"", author}
-            and 0 <= now - row["sent_at"] < DELETE_WINDOW and valid_target(row["signal_timestamp"], now)
-            and engine.store.one(f"SELECT 1 FROM items WHERE id=? AND {visible_post()}", (row["id"],)))
+    if not 0 <= now - row["sent_at"] < DELETE_WINDOW or not valid_target(row["signal_timestamp"], now):
+        return "post is outside the 24-hour window or has no valid Signal timestamp"
+    if not engine.store.one(f"""SELECT 1 FROM items WHERE id=? AND status IN ('sent','uncertain')
+                                AND {visible_post()}""", (row["id"],)):
+        return "post is withdrawn or no longer in sent history"
+    return ""
+
+
+def web_expansion_blocker(engine, row):
+    c = engine.config.data
+    if c["web_expand"] is not True:
+        return "web fallback is off"
+    if not c["tavily_key"]:
+        return "no Tavily key is saved"
+    if not engine.search:
+        return "search client is unavailable"
+    if not signalled_feed_url(row["url"]):
+        return "saved feed link is ineligible for public search"
+    return ""
 
 
 async def quote_expansion(engine, row, author, reply):
     store = engine.store
     edit = store.one("SELECT last_confirmed FROM footer_edits WHERE item_id=?", (row["id"],))
-    target = (edit or {}).get("last_confirmed") or row["signal_timestamp"]
-    quote = re.sub(r"\bhttps?://\S+", "", row["summary"], flags=re.I)
+    target = valid_target((edit or {}).get("last_confirmed"), time.time()) or row["signal_timestamp"]
+    quote = plain_details(row["summary"], 180)
     try:
-        await engine.signal.send(reply, quote=(target, author, quote[:180]))
+        await engine.signal.send(reply, quote=(target, author, quote))
     except Exception:
-        store.event("signal", "Details reply unconfirmed; not retried automatically")
+        expansion_event(store, "Signal did not confirm the quoted reply; it will not be retried automatically.")
+    else:
+        expansion_event(store, "Signal accepted the quoted details reply.")
 
 
-async def send_expansion(engine, row, scope):
+async def send_expansion(engine, row, scope, trigger):
+    store = engine.store
     author = engine.signal.current_account
-    if not expansion_current(engine, row, scope, author):
+    if blocker := expansion_blocker(engine, row, scope, author):
+        expansion_event(store, f"{trigger} ignored: {blocker}.", throttle=True)
         return False
     added = feed_details(row)
-    c = engine.config.data
-    search = bool(not added and engine.search and c["web_expand"] and c["tavily_key"] and signalled_feed_url(row["url"]))
+    search_blocker = web_expansion_blocker(engine, row) if not added else ""
+    search = not added and not search_blocker
     if search and engine.expansions.full():
+        expansion_event(store, f"{trigger} could not queue: the web details queue is full.", throttle=True)
         return False
     # The command and reaction share a persistent reservation, including after a timeout.
-    if not engine.store.execute(f"""UPDATE items SET expanded=1 WHERE id=? AND expanded=0 AND {visible_post()}""",
-                               (row["id"],)).rowcount:
+    if not store.execute(f"""UPDATE items SET expanded=1 WHERE id=? AND expanded=0 AND {visible_post()}""",
+                         (row["id"],)).rowcount:
+        expansion_event(store, f"{trigger} ignored: a details reply was already requested.", throttle=True)
         return False
     if search:
         engine.expansions.put_nowait((row["id"], scope, author))
+        expansion_event(store, f"{trigger} queued a public headline search.")
     else:
         reply = Message().line("🔎 More from the feed", "BOLD")
         for sentence in added:
             reply.line("• " + sentence)
-        if not added:
+        if added:
+            expansion_event(store, f"{trigger} found additional saved feed details; no web search.")
+        else:
+            expansion_event(store, f"{trigger} found no additional feed details; {search_blocker}.")
             reply.line("The saved feed entry has no additional details.")
         await quote_expansion(engine, row, author, reply.build())
     return True
 
 
 async def process_expansion(engine, item_id, scope, author):
-    row = engine.store.one("SELECT * FROM items WHERE id=? AND status IN ('sent','uncertain') AND expanded=1", (item_id,))
-    c = engine.config.data
-    key = c["tavily_key"]
+    store = engine.store
+    row = store.one("SELECT * FROM items WHERE id=? AND status IN ('sent','uncertain') AND expanded=1", (item_id,))
+    key = engine.config.data["tavily_key"]
 
-    def still_allowed():
-        return (row and c["web_expand"] and key and key == c["tavily_key"]
-                and expansion_current(engine, row, scope, author))
+    def blocked():
+        if not row:
+            return "post is no longer in sent history"
+        return (expansion_blocker(engine, row, scope, author) or web_expansion_blocker(engine, row)
+                or ("Tavily key changed" if key != engine.config.data["tavily_key"] else ""))
 
-    if not still_allowed():
+    def record(detail):
+        expansion_event(store, detail)
+
+    if blocker := blocked():
+        record(f"Queued web details canceled: {blocker}.")
         return
-    reply = await web_details(engine.search, engine.pool, row["title"], key, still_allowed, engine.store.reserve_search)
+    reply = await web_details(engine.search, engine.pool, row["title"], key, lambda: not blocked(),
+                              store.reserve_search, record, summary=row["summary"])
     async with engine.signal_changes:
-        if still_allowed():
+        if blocker := blocked():
+            record(f"Web details reply canceled: {blocker}.")
+        elif reply is not None:
             await quote_expansion(engine, row, author, reply)
 
 
 async def expand_command(engine, sender, context, scope):
     q = context.get("quote") or {}
-    if sender == "web" or context.get("group") != scope[0] or not q:
+    if sender == "web" or not scope[0] or context.get("group") != scope[0] or not isinstance(q, dict) or not q:
         return notice("🔎 React to a recent bot news post, or reply to it with /expand.")
     async with engine.signal_changes:
         row = post_target(engine, q.get("id"))
-        if (not row or not await engine.signal.owns((q.get("author"), q.get("authorNumber"), q.get("authorUuid")))
-                or scope != engine.scope):
+        if not row:
+            expansion_event(engine.store, "/expand ignored: no matching post in local history.", throttle=True)
             return notice("⚠️ No matching bot post in local history")
-        if not await send_expansion(engine, row, scope):
+        if (not await engine.signal.owns((q.get("author"), q.get("authorNumber"), q.get("authorUuid")))
+                or scope != engine.scope):
+            expansion_event(engine.store, "/expand ignored: quoted author or group could not be matched.", throttle=True)
+            return notice("⚠️ No matching bot post in local history")
+        if not await send_expansion(engine, row, scope, "/expand"):
             return notice("🔎 No new details reply", "Already requested, no longer eligible, or posting is paused.")
     return None
 
@@ -329,9 +376,12 @@ def feedback_status(engine, row):
 async def record_reaction(engine, sender, context, scope):
     r = context.get("reaction") or {}
     at = context.get("event_at")
-    if (sender == "web" or context.get("group") != scope[0] or type(at) is not int
-            or at <= 0 or not isinstance(r.get("emoji"), str)
-            or type(r.get("isRemove")) is not bool):
+    if (sender == "web" or not scope[0] or context.get("group") != scope[0]
+            or not isinstance(r, dict) or not isinstance(r.get("emoji"), str)):
+        return
+    if type(at) is not int or at <= 0 or type(r.get("isRemove")) is not bool:
+        if reaction_emoji(r["emoji"]) == EXPAND_EMOJI:
+            expansion_event(engine.store, "🔎 reaction ignored: missing event timestamp or removal flag.", throttle=True)
         return
     # Wait for a confirmed edit's timestamp to be indexed before looking up
     # the very first reaction sent in response to that edit.
@@ -342,18 +392,29 @@ async def record_reaction(engine, sender, context, scope):
 async def record_post_reaction(engine, sender, scope, r, at):
     c = engine.config.data
     emoji = reaction_emoji(r["emoji"])
-    if not (c["topic_feedback"] or c["story_mute"] or emoji == EXPAND_EMOJI and not r["isRemove"]):
+    expand = emoji == EXPAND_EMOJI and not r["isRemove"]
+    if not (c["topic_feedback"] or c["story_mute"] or expand):
         return
+    store = engine.store
     row = post_target(engine, r.get("targetSentTimestamp"))
-    if not row or not await engine.signal.owns((r.get("targetAuthor"), r.get("targetAuthorNumber"), r.get("targetAuthorUuid"))):
+    if not row:
+        if expand:
+            expansion_event(store, "🔎 reaction ignored: no matching post in local history.", throttle=True)
+        return
+    if not await engine.signal.owns((r.get("targetAuthor"), r.get("targetAuthorNumber"), r.get("targetAuthorUuid"))):
+        if expand:
+            expansion_event(store, "🔎 reaction ignored: target author could not be matched.", throttle=True)
         return
     if await engine.signal.owns((sender,)) or scope != engine.scope or engine.maintenance:
         return
     account = getattr(engine.signal, "current_account", "")
     if row["sent_account"] and row["sent_account"] != account:
+        if expand:
+            expansion_event(store, "🔎 reaction ignored: posting account changed.", throttle=True)
         return
-    store, item_id = engine.store, row["id"]
-    if not store.one(f"SELECT 1 FROM items WHERE id=? AND {visible_post()}", (item_id,)):
+    if not store.one(f"SELECT 1 FROM items WHERE id=? AND {visible_post()}", (row["id"],)):
+        if expand:
+            expansion_event(store, "🔎 reaction ignored: post is withdrawn or no longer in sent history.", throttle=True)
         return
     now = time.time()
     age = now - row["sent_at"]
@@ -362,8 +423,8 @@ async def record_post_reaction(engine, sender, scope, r, at):
     if (c["topic_feedback"] and not row["route"] and 0 <= age < VOTE_WINDOW
             and row["sent_at"] - 60 <= at / 1000 < row["sent_at"] + VOTE_WINDOW):
         record_vote(engine, row, sender, scope, r, at, now, emoji)
-    if emoji == EXPAND_EMOJI and not r["isRemove"]:
-        await send_expansion(engine, row, scope)
+    if expand:
+        await send_expansion(engine, row, scope, "🔎 reaction")
 
 
 def record_vote(engine, row, sender, scope, reaction, at, now, emoji):

@@ -12,6 +12,7 @@ from newsbot.formatting import Message, SIGNAL_INLINE_BYTES
 from newsbot.interactions import edit_footer, vote_tally
 from newsbot.publishing import recorded_message
 from newsbot.signal import Signal
+from newsbot.version import RELEASES, VERSION
 from test_bot import Base, decision, sample_picture
 
 
@@ -339,7 +340,7 @@ class Release105(SignalFixture, unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("alias-5", first_models)
         self.assertIn("alias-5", await self.command("/models 2"))
         version = await self.command("/version")
-        self.assertIn("1.0.9 · Lens", version)
+        self.assertIn(f"{VERSION} · {RELEASES[VERSION][0]}", version)
         self.assertEqual(version.count("\n• "), 5)
         self.posted("Some news")
         with patch.object(self.pool, "recap", AsyncMock(return_value=[

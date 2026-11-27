@@ -195,15 +195,20 @@ def safe_video_url(value, base_url, declared=False):
     return ""
 
 
+def video_source_url(value, base_url, content_type):
+    mime = str(content_type or "").partition(";")[0].strip().lower()
+    if mime and mime not in VIDEO_TYPES | {"application/octet-stream", "video/*"}:
+        return ""
+    return safe_video_url(value, base_url, mime in VIDEO_TYPES)
+
+
 def video_candidates(entry, base_url):
     urls = {}
     for key in ("media_content", "enclosures"):
         for candidate in entry.get(key, [])[:12]:
-            mime = str(candidate.get("type", "")).partition(";")[0].strip().lower()
-            if (candidate.get("medium") not in {None, "", "video"} or candidate.get("expression") == "sample"
-                    or mime and mime not in VIDEO_TYPES | {"application/octet-stream", "video/*"}):
+            if candidate.get("medium") not in {None, "", "video"} or candidate.get("expression") == "sample":
                 continue
-            if url := safe_video_url(candidate.get("url") or candidate.get("href"), base_url, mime in VIDEO_TYPES):
+            if url := video_source_url(candidate.get("url") or candidate.get("href"), base_url, candidate.get("type")):
                 urls.setdefault(canonical_url(url), url)
     return list(urls.values())[:MAX_VIDEO_URLS]
 
@@ -228,7 +233,7 @@ def inline_media(html, url, base_url):
         if poster := image_candidate({"src": tag.get("poster")}, url):
             posters.add(canonical_url(poster))
         for source in [tag, *tag.find_all("source", src=True, limit=4)]:
-            if clip := safe_video_url(source.get("src"), url, source.get("type") in VIDEO_TYPES):
+            if clip := video_source_url(source.get("src"), url, source.get("type")):
                 clips.setdefault(canonical_url(clip), clip)
 
     for tag in html.find_all("img", src=True, limit=12):

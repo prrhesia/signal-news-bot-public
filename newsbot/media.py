@@ -8,7 +8,17 @@ import aiohttp
 from bs4 import BeautifulSoup
 from PIL import Image
 
-from .feeds import VIDEO_TYPES, canonical_url, fetch_public, own_status_url, public_response, safe_video_url, signalled_feed_url
+from .feeds import (
+    MAX_VIDEO_URLS,
+    VIDEO_TYPES,
+    canonical_url,
+    fetch_public,
+    own_status_url,
+    public_response,
+    safe_video_url,
+    signalled_feed_url,
+    video_source_url,
+)
 
 SIDE = 16
 MAX_PIXELS = 4_500_000
@@ -59,15 +69,16 @@ def own_nitter_clips(data, page):
     if body is None:
         return []
     urls = {}
-    for node in body.select(".attachments .video-download[href], .attachments video[src], .attachments video source[src]",
+    for node in body.select(".attachments a.video-download[href], .attachments video[src], .attachments video source[src]",
                             limit=12):
         quoted = node.find_parent(class_="quote")
         if quoted is not None or node.find_parent("blockquote") is not None:
             continue
-        declared = "video-download" in node.get("class", []) or node.get("type") in VIDEO_TYPES
-        if clip := safe_video_url(node.get("href") or node.get("src"), page, declared):
+        clip = (safe_video_url(node["href"], page, declared=True) if node.name == "a"
+                else video_source_url(node["src"], page, node.get("type")))
+        if clip:
             urls.setdefault(canonical_url(clip), clip)
-    return list(urls.values())[:3]
+    return list(urls.values())[:MAX_VIDEO_URLS]
 
 
 def mp4_boxes(file, start, end):
